@@ -1,6 +1,6 @@
 import { View, Text, Pressable, type ViewProps } from "react-native";
 import { Image } from "expo-image";
-import { Heart, MessageCircle, Repeat2, Share, MoreHorizontal, BadgeCheck } from "lucide-react-native";
+import { Heart, MessageCircle, Repeat2, Share, MoreHorizontal, BadgeCheck, Globe2 } from "lucide-react-native";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import type { PostWithAuthor } from "@/lib/types/database";
@@ -95,6 +95,9 @@ export function SocialPost({
   // Check if quoted_post is valid (has actual data, not just an empty object from the join)
   const hasValidQuotedPost = post.quoted_post && post.quoted_post.id && post.quoted_post.content;
   
+  // Check if this is a federated (external) post
+  const isFederated = (post as any).is_federated === true;
+  
   // Handle Simple Repost: Only show repost UI when explicitly marked as a repost
   // AND there's a valid quoted_post to display. This prevents false positives.
   const isSimpleRepost = (post.type === 'repost' || post.is_repost === true) && hasValidQuotedPost;
@@ -140,6 +143,12 @@ export function SocialPost({
               </Text>
               {displayPost.author?.is_verified && (
                 <BadgeCheck size={16} color="#10B981" fill="#10B981" />
+              )}
+              {isFederated && (
+                <View className="flex-row items-center gap-1 bg-blue-500/20 px-1.5 py-0.5 rounded-full">
+                  <Globe2 size={12} color="#3B82F6" />
+                  <Text className="text-xs text-blue-500 font-medium">Bluesky</Text>
+                </View>
               )}
               <Text className="text-text-muted text-sm flex-shrink" numberOfLines={1}>
                 @{displayPost.author?.username || "user"} · {formatDistanceToNow(new Date(displayPost.created_at))}
@@ -197,29 +206,38 @@ export function SocialPost({
         </PostContent>
 
         <PostFooter>
-          <ActionButton 
-            icon={MessageCircle} 
-            count={displayPost.comments_count} 
-            onPress={onReply} 
-          />
-          <ActionButton 
-            icon={Repeat2} 
-            count={displayPost.reposts_count} 
-            active={false} 
-            activeColor="#10B981" // green
-            onPress={onRepost} 
-          />
-          <ActionButton 
-            icon={Heart} 
-            count={displayPost.likes_count} 
-            active={displayPost.is_liked} 
-            activeColor="#EF4444" // red
-            onPress={onLike} 
-          />
-          <ActionButton 
-            icon={Share} 
-            onPress={onShare}
-          />
+          {isFederated ? (
+            <View className="flex-row items-center gap-2">
+              <Globe2 size={14} color="#6B7280" />
+              <Text className="text-text-muted text-xs">View on Bluesky to interact</Text>
+            </View>
+          ) : (
+            <>
+              <ActionButton 
+                icon={MessageCircle} 
+                count={displayPost.comments_count} 
+                onPress={onReply} 
+              />
+              <ActionButton 
+                icon={Repeat2} 
+                count={displayPost.reposts_count} 
+                active={false} 
+                activeColor="#10B981" // green
+                onPress={onRepost} 
+              />
+              <ActionButton 
+                icon={Heart} 
+                count={displayPost.likes_count} 
+                active={displayPost.is_liked} 
+                activeColor="#EF4444" // red
+                onPress={onLike} 
+              />
+              <ActionButton 
+                icon={Share} 
+                onPress={onShare}
+              />
+            </>
+          )}
         </PostFooter>
       </PostRoot>
     </Pressable>

@@ -2,33 +2,66 @@ import { View, Text, RefreshControl, ActivityIndicator, Alert, Platform, ActionS
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
-import { Leaf } from "lucide-react-native";
+import { Leaf, Globe2 } from "lucide-react-native";
+import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useFeed, useLikePost, useUnlikePost, useDeletePost, useRepost } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { SocialPost } from "@/components/social";
+import { getFederatedPosts } from "@/lib/services/bluesky";
 import type { PostWithAuthor } from "@/lib/types/database";
+
+type FeedTab = "for-you" | "following" | "federated";
+
+const TABS: { id: FeedTab; label: string }[] = [
+  { id: "for-you", label: "For You" },
+  { id: "following", label: "Following" },
+  { id: "federated", label: "Federated" },
+];
 
 export default function FeedScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
+  
   const { 
     data, isLoading, refetch, isRefetching, 
     fetchNextPage, hasNextPage, isFetchingNextPage,
-    isError // Add error state
+    isError
   } = useFeed();
+  
+  // Federated feed from Bluesky
+  const federatedQuery = useQuery({
+    queryKey: ["federated-feed"],
+    queryFn: () => getFederatedPosts(50),
+    enabled: activeTab === "federated",
+    staleTime: 1000 * 60 * 2, // 2 minutes
+  });
+
   const likeMutation = useLikePost();
   const unlikeMutation = useUnlikePost();
   const deleteMutation = useDeletePost();
   const repostMutation = useRepost();
   
   // Flatten infinite query pages into a single array
-  const posts = data?.pages?.flat() || [];
+  const internalPosts = data?.pages?.flat() || [];
+  
+  // Get the appropriate posts based on active tab
+  const posts = activeTab === "federated" 
+    ? (federatedQuery.data || []) 
+    : internalPosts;
+  
+  // Loading and error states based on active tab
+  const isCurrentLoading = activeTab === "federated" ? federatedQuery.isLoading : isLoading;
+  const isCurrentRefetching = activeTab === "federated" ? federatedQuery.isRefetching : isRefetching;
+  const isCurrentError = activeTab === "federated" ? federatedQuery.isError : isError;
+  const currentRefetch = activeTab === "federated" ? federatedQuery.refetch : refetch;
 
-  if (isError) {
+  if (isCurrentError) {
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center px-6">
         <Text className="text-text-primary text-lg font-semibold mb-2">Failed to load feed</Text>
-        <Pressable onPress={() => refetch()} className="bg-primary px-6 py-3 rounded-full">
+        <Pressable onPress={() => currentRefetch()} className="bg-primary px-6 py-3 rounded-full">
           <Text className="text-white font-bold">Retry</Text>
         </Pressable>
       </SafeAreaView>
@@ -176,7 +209,31 @@ export default function FeedScreen() {
         <Text className="text-2xl font-bold text-text-primary ml-3">Cannect</Text>
       </View>
 
-      {isLoading ? (
+      {/* Tab Bar */}
+      <View className="flex-row border-b border-border">
+        {TABS.map((tab) => (
+          <Pressable
+            key={tab.id}
+            onPress={() => setActiveTab(tab.id)}
+            className={`flex-1 py-3 items-center ${
+              activeTab === tab.id ? "border-b-2 border-primary" : ""
+            }`}
+          >
+            <View className="flex-row items-center gap-1.5">
+              {tab.id === "federated" && <Globe2 size={14} color={activeTab === tab.id ? "#10B981" : "#6B7280"} />}
+              <Text
+                className={`font-semibold ${
+                  activeTab === tab.id ? "text-primary" : "text-text-muted"
+                }`}
+              >
+                {tab.label}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+
+      {isCurrentLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#10B981" />
         </View>
@@ -185,29 +242,33 @@ export default function FeedScreen() {
           <FlashList
             data={posts}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <SocialPost 
-                post={item}
-                onLike={() => handleLike(item)}
-                onReply={() => handlePostPress(item.id)}
-                onRepost={() => handleRepost(item)}
-                onProfilePress={() => handleProfilePress(item.user_id)}
-                onPress={() => handlePostPress(item.id)}
-                onMore={() => handleMore(item)}
-                onShare={() => handleShare(item)}
-              />
-            )}
+            renderItem={({ item }) => {
+              const isFederated = (item as any).is_federated === true;
+              return (
+                <SocialPost 
+                  post={item}
+                  onLike={() => !isFederated && handleLike(item)}
+                  onReply={() => !isFederated && handlePostPress(item.id)}
+                  onRepost={() => !isFederated && handleRepost(item)}
+                  onProfilePress={() => !isFederated && handleProfilePress(item.user_id)}
+                  onPress={() => !isFederated && handlePostPress(item.id)}
+                  onMore={() => !isFederated && handleMore(item)}
+                  onShare={() => handleShare(item)}
+                />
+              );
+            }}
             estimatedItemSize={200}
             refreshControl={
               <RefreshControl 
-                refreshing={isRefetching} 
-                onRefresh={refetch} 
+                refreshing={isCurrentRefetching} 
+                onRefresh={() => currentRefetch()} 
                 tintColor="#10B981"
                 colors={["#10B981"]} // Android
               />
             }
             onEndReached={() => {
-              if (hasNextPage && !isFetchingNextPage) {
+              // Only paginate for internal feeds, not federated
+              if (activeTab !== "federated" && hasNextPage && !isFetchingNextPage) {
                 fetchNextPage();
               }
             }}
@@ -216,12 +277,14 @@ export default function FeedScreen() {
             ListEmptyComponent={
               <View className="flex-1 items-center justify-center pt-24">
                 <Text className="text-text-secondary text-base">
-                  No posts yet. Be the first!
+                  {activeTab === "federated" 
+                    ? "No federated posts available." 
+                    : "No posts yet. Be the first!"}
                 </Text>
               </View>
             }
             ListFooterComponent={
-              isFetchingNextPage ? (
+              isFetchingNextPage && activeTab !== "federated" ? (
                 <View className="py-4 items-center">
                   <ActivityIndicator size="small" color="#10B981" />
                 </View>
