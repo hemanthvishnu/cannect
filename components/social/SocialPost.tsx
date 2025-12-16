@@ -80,6 +80,7 @@ interface SocialPostProps {
   onPress?: () => void;
   onMore?: () => void;
   onShare?: () => void;
+  onQuotedPostPress?: (quotedPostId: string) => void;
 }
 
 export function SocialPost({ 
@@ -90,7 +91,8 @@ export function SocialPost({
   onProfilePress,
   onPress,
   onMore,
-  onShare
+  onShare,
+  onQuotedPostPress
 }: SocialPostProps) {
   // Check if quoted_post is valid (has actual data, not just an empty object from the join)
   const hasValidQuotedPost = post.quoted_post && post.quoted_post.id && post.quoted_post.content;
@@ -209,7 +211,7 @@ export function SocialPost({
           */}
           {!isSimpleRepost && hasValidQuotedPost && displayPost === post && (
             <QuoteContainer onPress={() => {
-              console.log("Pressed quoted post:", displayPost.quoted_post?.id);
+              onQuotedPostPress?.(displayPost.quoted_post?.id);
             }}>
               <View className="p-3 gap-2">
                 <View className="flex-row items-center gap-2">
@@ -220,11 +222,18 @@ export function SocialPost({
                   <Text className="font-bold text-sm text-text-primary" numberOfLines={1}>
                     {displayPost.quoted_post.author?.display_name || displayPost.quoted_post.author?.username || "Unknown"}
                   </Text>
-                  {/* Show if quoted post is itself a quote (but we won't nest deeper) */}
+                  {/* Show if quoted post is itself a quote (but we won't nest deeper) 
+                      INTERACTIVE: Tap to see the full quoted post with its own quote context */}
                   {displayPost.quoted_post.quoted_post_id && (
-                    <View className="bg-muted/30 px-1.5 py-0.5 rounded">
-                      <Text className="text-xs text-text-muted">Quote</Text>
-                    </View>
+                    <Pressable 
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        onQuotedPostPress?.(displayPost.quoted_post.id);
+                      }}
+                      className="bg-primary/20 px-1.5 py-0.5 rounded active:bg-primary/30"
+                    >
+                      <Text className="text-xs text-primary font-medium">Quote ↗</Text>
+                    </Pressable>
                   )}
                   <Text className="text-text-muted text-xs">
                     @{displayPost.quoted_post.author?.username || "user"}

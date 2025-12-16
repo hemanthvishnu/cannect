@@ -298,6 +298,10 @@ export default function FeedScreen() {
                       handlePostPress(interactionId);
                     }
                   }}
+                  onQuotedPostPress={(quotedPostId) => {
+                    // Navigate to quoted post detail to see full context
+                    router.push(`/post/${quotedPostId}` as any);
+                  }}
                   onMore={() => {
                     if (!isLiveGlobal || isCannectRepostOfGlobal) {
                       handleMore(item);
