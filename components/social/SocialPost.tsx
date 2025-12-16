@@ -178,6 +178,16 @@ export function SocialPost({
             <Text className="text-sm text-text-primary">
               {externalData.content}
             </Text>
+            {/* Media from quoted Bluesky post */}
+            {externalData.media_urls && externalData.media_urls.length > 0 && (
+              <View className="mt-2 overflow-hidden rounded-lg border border-border">
+                <Image
+                  source={{ uri: externalData.media_urls[0] }}
+                  style={{ width: "100%", aspectRatio: 16/9 }}
+                  contentFit="cover"
+                />
+              </View>
+            )}
           </View>
         </QuoteContainer>
       );
@@ -218,6 +228,16 @@ export function SocialPost({
             <Text className="text-sm text-text-primary">
               {displayPost.quoted_post.content}
             </Text>
+            {/* Media from quoted Cannect post */}
+            {displayPost.quoted_post.media_urls && displayPost.quoted_post.media_urls.length > 0 && (
+              <View className="mt-2 overflow-hidden rounded-lg border border-border">
+                <Image
+                  source={{ uri: displayPost.quoted_post.media_urls[0] }}
+                  style={{ width: "100%", aspectRatio: 16/9 }}
+                  contentFit="cover"
+                />
+              </View>
+            )}
           </View>
         </QuoteContainer>
       );
