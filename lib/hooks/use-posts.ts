@@ -195,8 +195,12 @@ export function useLikePost() {
     },
     // Optimistic Update: Update UI immediately
     onMutate: async (postId) => {
+      // Cancel both feed and detail queries
       await queryClient.cancelQueries({ queryKey: queryKeys.posts.all });
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.detail(postId) });
+      
       const previousPosts = queryClient.getQueryData(queryKeys.posts.all);
+      const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(postId));
 
       // Update Feed
       queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
@@ -212,14 +216,24 @@ export function useLikePost() {
           ),
         };
       });
+      
+      // Update Detail view
+      queryClient.setQueryData(queryKeys.posts.detail(postId), (old: any) => {
+        if (!old) return old;
+        return { ...old, is_liked: true, likes_count: (old.likes_count || 0) + 1 };
+      });
 
-      return { previousPosts };
+      return { previousPosts, previousDetail, postId };
     },
     onError: (err, postId, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
+      if (context?.postId) {
+        queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
+      }
     },
-    onSettled: () => {
+    onSettled: (data, error, postId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
     },
   });
 }
@@ -240,8 +254,12 @@ export function useUnlikePost() {
       return postId;
     },
     onMutate: async (postId) => {
+      // Cancel both feed and detail queries
       await queryClient.cancelQueries({ queryKey: queryKeys.posts.all });
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.detail(postId) });
+      
       const previousPosts = queryClient.getQueryData(queryKeys.posts.all);
+      const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(postId));
 
       queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
         if (!old) return old;
@@ -256,14 +274,24 @@ export function useUnlikePost() {
           ),
         };
       });
+      
+      // Update Detail view
+      queryClient.setQueryData(queryKeys.posts.detail(postId), (old: any) => {
+        if (!old) return old;
+        return { ...old, is_liked: false, likes_count: Math.max(0, (old.likes_count || 0) - 1) };
+      });
 
-      return { previousPosts };
+      return { previousPosts, previousDetail, postId };
     },
     onError: (err, postId, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
+      if (context?.postId) {
+        queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
+      }
     },
-    onSettled: () => {
+    onSettled: (data, error, postId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
     },
   });
 }

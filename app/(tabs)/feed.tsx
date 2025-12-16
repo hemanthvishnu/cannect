@@ -70,10 +70,18 @@ export default function FeedScreen() {
   }
 
   const handleLike = (post: PostWithAuthor) => {
+    // For simple reposts of internal posts, like the ORIGINAL post, not the repost wrapper
+    // This aggregates likes on the original content, not scattered across reposts
+    const isSimpleRepostOfInternal = (post.type === 'repost' || post.is_repost) && 
+      post.repost_of_id && 
+      !(post as any).external_id;
+    
+    const targetId = isSimpleRepostOfInternal ? post.repost_of_id : post.id;
+    
     if (post.is_liked) {
-      unlikeMutation.mutate(post.id);
+      unlikeMutation.mutate(targetId);
     } else {
-      likeMutation.mutate(post.id);
+      likeMutation.mutate(targetId);
     }
   };
 
@@ -195,12 +203,16 @@ export default function FeedScreen() {
         }
       );
     } else if (Platform.OS === 'web') {
-      // Web: Use custom prompt
-      const choice = window.prompt("Enter '1' to Repost, '2' to Quote Post, or Cancel:");
-      if (choice === '1') {
-        toggleRepostMutation.mutate({ post });
-      } else if (choice === '2') {
+      // Web: Use confirm dialogs for better UX
+      const wantsQuote = window.confirm('Quote Post? (OK = Quote with comment, Cancel = Simple Repost)');
+      if (wantsQuote) {
         router.push(getQuoteUrl() as any);
+      } else {
+        // Ask if they want to do a simple repost
+        const confirmRepost = window.confirm('Repost this without comment?');
+        if (confirmRepost) {
+          toggleRepostMutation.mutate({ post });
+        }
       }
     } else {
       // Android Alert Fallback
@@ -281,21 +293,59 @@ export default function FeedScreen() {
               return (
                 <SocialPost 
                   post={item}
-                  onLike={() => handleLike(item)} // Component handles disabled state
-                  onReply={() => handlePostPress(interactionId)} // Navigate to Cannect thread
+                  onLike={() => {
+                    // For live global, prompt to import first
+                    if (isLiveGlobal && !isCannectRepostOfGlobal) {
+                      Alert.alert(
+                        "Import to Like",
+                        "Repost this to Cannect first to enable likes and comments.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Repost", onPress: () => handleRepost(item) }
+                        ]
+                      );
+                    } else {
+                      handleLike(item);
+                    }
+                  }}
+                  onReply={() => {
+                    // For live global, prompt to import first (creates shadow thread)
+                    if (isLiveGlobal && !isCannectRepostOfGlobal) {
+                      Alert.alert(
+                        "Import to Reply",
+                        "Repost this to Cannect first to start a discussion thread.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Repost & Reply", onPress: () => handleRepost(item) }
+                        ]
+                      );
+                    } else {
+                      handlePostPress(interactionId);
+                    }
+                  }}
                   onRepost={() => handleRepost(item)}
                   onProfilePress={() => {
                     // For Cannect reposts, navigate to reposter's profile
-                    // For live global, no navigation
+                    // For live global, no navigation (external profile)
                     if (!isLiveGlobal || isCannectRepostOfGlobal) {
                       handleProfilePress(item.user_id);
                     }
                   }}
                   onPress={() => {
                     // For Cannect reposts, navigate to thread view
-                    // For live global, no navigation
+                    // For live global, prompt to import
                     if (!isLiveGlobal || isCannectRepostOfGlobal) {
                       handlePostPress(interactionId);
+                    } else {
+                      // Show import prompt for live global
+                      Alert.alert(
+                        "Import Post",
+                        "Repost this to Cannect to enable full interaction.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Import", onPress: () => handleRepost(item) }
+                        ]
+                      );
                     }
                   }}
                   onQuotedPostPress={(quotedPostId) => {
