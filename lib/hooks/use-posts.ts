@@ -54,6 +54,7 @@ export function useFeed() {
 
       // Select with a Count for likes
       // Note: For quoted_post, we use repost_of_id to get the original post this one is quoting
+      // Also include external_* columns for shadow reposts of federated content
       const query = supabase
         .from("posts")
         .select(`
@@ -66,7 +67,10 @@ export function useFeed() {
             created_at,
             media_urls,
             author:profiles!user_id(*)
-          )
+          ),
+          external_id,
+          external_source,
+          external_metadata
         `)
         .eq("is_reply", false)
         .order("created_at", { ascending: false })
@@ -281,14 +285,33 @@ export function useRepost() {
     mutationFn: async ({ originalPost, content = "" }: { originalPost: any, content?: string }) => {
       if (!user) throw new Error("Not authenticated");
       
-      const { error } = await supabase.from("posts").insert({
+      const insertData: any = {
         user_id: user.id,
         content: content,
-        repost_of_id: originalPost.id,
         is_repost: true,
-        type: content ? 'quote' : 'repost'
-      });
+      };
 
+      // If it's a federated post, save as an external reference (Shadow Repost)
+      if (originalPost.is_federated) {
+        insertData.external_id = originalPost.id; // Bluesky CID
+        insertData.external_source = "bluesky";
+        insertData.external_metadata = {
+          author: originalPost.author,
+          content: originalPost.content,
+          media_urls: originalPost.media_urls,
+          created_at: originalPost.created_at,
+          likes_count: originalPost.likes_count,
+          reposts_count: originalPost.reposts_count,
+          comments_count: originalPost.comments_count,
+        };
+        insertData.type = content ? 'quote' : 'repost';
+      } else {
+        // Internal post - use repost_of_id
+        insertData.repost_of_id = originalPost.id;
+        insertData.type = content ? 'quote' : 'repost';
+      }
+
+      const { error } = await supabase.from("posts").insert(insertData);
       if (error) throw error;
     },
     onSuccess: () => {

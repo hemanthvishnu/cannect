@@ -249,7 +249,7 @@ export default function FeedScreen() {
                   post={item}
                   onLike={() => !isFederated && handleLike(item)}
                   onReply={() => !isFederated && handlePostPress(item.id)}
-                  onRepost={() => !isFederated && handleRepost(item)}
+                  onRepost={() => handleRepost(item)} // Allow repost for all posts including federated
                   onProfilePress={() => !isFederated && handleProfilePress(item.user_id)}
                   onPress={() => !isFederated && handlePostPress(item.id)}
                   onMore={() => !isFederated && handleMore(item)}

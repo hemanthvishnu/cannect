@@ -95,22 +95,41 @@ export function SocialPost({
   // Check if quoted_post is valid (has actual data, not just an empty object from the join)
   const hasValidQuotedPost = post.quoted_post && post.quoted_post.id && post.quoted_post.content;
   
-  // Check if this is a federated (external) post
+  // Check if this is a federated (external) post from Global tab
   const isFederated = (post as any).is_federated === true;
+  
+  // Check if this is a shadow repost (repost of external/federated content)
+  const isExternalRepost = !!(post as any).external_id && (post as any).external_metadata;
+  const externalData = isExternalRepost ? (post as any).external_metadata : null;
   
   // Handle Simple Repost: Only show repost UI when explicitly marked as a repost
   // AND there's a valid quoted_post to display. This prevents false positives.
-  const isSimpleRepost = (post.type === 'repost' || post.is_repost === true) && hasValidQuotedPost;
+  const isSimpleRepost = (post.type === 'repost' || post.is_repost === true) && (hasValidQuotedPost || isExternalRepost);
+  
+  // For external reposts, construct a virtual quoted_post from the metadata
+  const virtualQuotedPost = isExternalRepost ? {
+    id: (post as any).external_id,
+    content: externalData?.content,
+    created_at: externalData?.created_at,
+    media_urls: externalData?.media_urls,
+    author: externalData?.author,
+    is_federated: true, // Mark as federated for badge display
+  } : null;
   
   // If it's a simple repost, we effectively "swap" the post to be the quoted one,
   // but keep the "reposted by" context.
-  const displayPost = isSimpleRepost && post.quoted_post ? post.quoted_post : post;
+  const displayPost = isSimpleRepost 
+    ? (virtualQuotedPost || post.quoted_post) 
+    : post;
   const reposter = isSimpleRepost ? post.author : null;
 
   // Fix: Standardize fallback to match registration logic (using encoded display_name)
-  const displayName = displayPost.author?.display_name || displayPost.author?.username || "User";
-  const avatarUrl = displayPost.author?.avatar_url || 
+  const displayName = displayPost?.author?.display_name || displayPost?.author?.username || "User";
+  const avatarUrl = displayPost?.author?.avatar_url || 
     `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=10B981&color=fff`;
+  
+  // Check if the displayed content is from an external source
+  const displayedIsFederated = isFederated || (displayPost as any)?.is_federated === true;
   
   return (
     <Pressable onPress={onPress}>
@@ -139,19 +158,19 @@ export function SocialPost({
           <View className="flex-1 flex-row items-center justify-between">
             <View className="flex-1 flex-row items-center gap-1.5 overflow-hidden">
               <Text className="font-bold text-base text-text-primary" numberOfLines={1}>
-                {displayPost.author?.display_name || displayPost.author?.username || "Unknown"}
+                {displayPost?.author?.display_name || displayPost?.author?.username || "Unknown"}
               </Text>
-              {displayPost.author?.is_verified && (
+              {displayPost?.author?.is_verified && (
                 <BadgeCheck size={16} color="#10B981" fill="#10B981" />
               )}
-              {isFederated && (
+              {displayedIsFederated && (
                 <View className="flex-row items-center gap-1 bg-blue-500/20 px-1.5 py-0.5 rounded-full">
                   <Globe2 size={12} color="#3B82F6" />
                   <Text className="text-xs text-blue-500 font-medium">Bluesky</Text>
                 </View>
               )}
               <Text className="text-text-muted text-sm flex-shrink" numberOfLines={1}>
-                @{displayPost.author?.username || "user"} · {formatDistanceToNow(new Date(displayPost.created_at))}
+                @{displayPost?.author?.username || "user"} · {formatDistanceToNow(new Date(displayPost?.created_at || new Date()))}
               </Text>
             </View>
             <Pressable className="p-1 active:opacity-70" onPress={onMore}>
@@ -206,29 +225,49 @@ export function SocialPost({
         </PostContent>
 
         <PostFooter>
-          {isFederated ? (
-            <View className="flex-row items-center gap-2">
-              <Globe2 size={14} color="#6B7280" />
-              <Text className="text-text-muted text-xs">View on Bluesky to interact</Text>
-            </View>
+          {displayedIsFederated ? (
+            <>
+              {/* Disabled Reply for federated */}
+              <ActionButton 
+                icon={MessageCircle} 
+                count={displayPost?.comments_count} 
+              />
+              {/* ✅ REPOST ENABLED FOR FEDERATED - allows shadow reposting */}
+              <ActionButton 
+                icon={Repeat2} 
+                count={displayPost?.reposts_count} 
+                active={false} 
+                activeColor="#10B981"
+                onPress={onRepost} 
+              />
+              {/* Disabled Like for federated */}
+              <ActionButton 
+                icon={Heart} 
+                count={displayPost?.likes_count} 
+              />
+              <ActionButton 
+                icon={Share} 
+                onPress={onShare}
+              />
+            </>
           ) : (
             <>
               <ActionButton 
                 icon={MessageCircle} 
-                count={displayPost.comments_count} 
+                count={displayPost?.comments_count} 
                 onPress={onReply} 
               />
               <ActionButton 
                 icon={Repeat2} 
-                count={displayPost.reposts_count} 
+                count={displayPost?.reposts_count} 
                 active={false} 
                 activeColor="#10B981" // green
                 onPress={onRepost} 
               />
               <ActionButton 
                 icon={Heart} 
-                count={displayPost.likes_count} 
-                active={displayPost.is_liked} 
+                count={displayPost?.likes_count} 
+                active={displayPost?.is_liked} 
                 activeColor="#EF4444" // red
                 onPress={onLike} 
               />
