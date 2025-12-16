@@ -148,6 +148,7 @@ export default function PostDetailsScreen() {
               <SocialPost 
                 post={post}
                 onLike={() => handleLike(post)}
+                onReply={() => setReplyTargetId(id)} 
                 onProfilePress={() => router.push(`/user/${post.user_id}` as any)}
                 onShare={handleShare}
                 onRepost={handleRepost}
