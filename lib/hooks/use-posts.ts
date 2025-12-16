@@ -342,6 +342,50 @@ export function useCreatePost() {
       if (error) throw error;
       return { ...data, _replyToId: replyToId }; // Pass through for onSuccess
     },
+    // Optimistic Update: Increment parent's comments_count instantly for snappy UX
+    onMutate: async ({ replyToId }) => {
+      if (!replyToId) return {};
+      
+      // Cancel outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.detail(replyToId) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.all });
+      
+      // Snapshot previous values for rollback
+      const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(replyToId));
+      const previousFeed = queryClient.getQueryData(queryKeys.posts.all);
+      
+      // Optimistically update the parent post's comments_count in Detail view
+      queryClient.setQueryData(queryKeys.posts.detail(replyToId), (old: any) => {
+        if (!old) return old;
+        return { ...old, comments_count: (old.comments_count || 0) + 1 };
+      });
+      
+      // Also update in Feed (if parent post is visible there)
+      queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => 
+            page.map((post: any) => 
+              post.id === replyToId 
+                ? { ...post, comments_count: (post.comments_count || 0) + 1 }
+                : post
+            )
+          ),
+        };
+      });
+      
+      return { previousDetail, previousFeed, replyToId };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.replyToId && context?.previousDetail) {
+        queryClient.setQueryData(queryKeys.posts.detail(context.replyToId), context.previousDetail);
+      }
+      if (context?.previousFeed) {
+        queryClient.setQueryData(queryKeys.posts.all, context.previousFeed);
+      }
+    },
     onSuccess: (data) => {
       // Invalidate feed and profile
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
@@ -351,7 +395,8 @@ export function useCreatePost() {
       if (data._replyToId) {
         // Invalidate replies for the immediate parent
         queryClient.invalidateQueries({ queryKey: queryKeys.posts.replies(data._replyToId) });
-        // Also need to invalidate the root post's replies since we fetch recursively
+        // Also invalidate the parent's detail to sync real count from DB
+        queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(data._replyToId) });
         // The parent post might be a reply itself, so we invalidate all reply queries
         queryClient.invalidateQueries({ predicate: (query) => 
           query.queryKey[0] === 'posts' && query.queryKey[1] === 'replies'
