@@ -58,7 +58,14 @@ export function useFeed() {
         .select(`
           *,
           author:profiles!user_id(*),
-          likes:likes(count)
+          likes:likes(count),
+          quoted_post:posts!repost_of_id(
+            id,
+            content,
+            created_at,
+            media_urls,
+            author:profiles!user_id(*)
+          )
         `)
         .eq("is_reply", false)
         .order("created_at", { ascending: false })
@@ -81,7 +88,14 @@ export function usePost(postId: string) {
         .select(`
           *,
           author:profiles!user_id(*),
-          likes:likes(count)
+          likes:likes(count),
+          quoted_post:posts!repost_of_id(
+            id,
+            content,
+            created_at,
+            media_urls,
+            author:profiles!user_id(*)
+          )
         `)
         .eq("id", postId)
         .single();
@@ -255,18 +269,26 @@ export function useCreatePost() {
 export function useRepost() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+
   return useMutation({
-    mutationFn: async (originalPost: any) => {
+    mutationFn: async ({ originalPost, content = "" }: { originalPost: any, content?: string }) => {
       if (!user) throw new Error("Not authenticated");
+      
       const { error } = await supabase.from("posts").insert({
         user_id: user.id,
-        content: "",
+        content: content,
         repost_of_id: originalPost.id,
-        is_repost: true
+        is_repost: true,
+        type: content ? 'quote' : 'repost'
       });
+
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.posts.all })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
+    },
+  });
+}
   });
 }
 

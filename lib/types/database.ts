@@ -66,6 +66,7 @@ export interface Database {
           reply_to_id: string | null;
           is_repost: boolean;
           repost_of_id: string | null;
+          type: 'post' | 'repost' | 'quote';
           created_at: string;
           updated_at: string;
         };
@@ -81,6 +82,7 @@ export interface Database {
           reply_to_id?: string | null;
           is_repost?: boolean;
           repost_of_id?: string | null;
+          type?: 'post' | 'repost' | 'quote';
           created_at?: string;
           updated_at?: string;
         };
@@ -96,6 +98,7 @@ export interface Database {
           reply_to_id?: string | null;
           is_repost?: boolean;
           repost_of_id?: string | null;
+          type?: 'post' | 'repost' | 'quote';
           created_at?: string;
           updated_at?: string;
         };
@@ -187,6 +190,7 @@ export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 export type PostWithAuthor = Post & {
   author: Profile;
   is_liked?: boolean;
+  quoted_post?: (Post & { author: Profile }) | null;
 };
 
 export type NotificationWithActor = Notification & {
