@@ -64,6 +64,8 @@ export interface Database {
           reposts_count: number;
           is_reply: boolean;
           reply_to_id: string | null;
+          is_repost: boolean;
+          repost_of_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -77,6 +79,8 @@ export interface Database {
           reposts_count?: number;
           is_reply?: boolean;
           reply_to_id?: string | null;
+          is_repost?: boolean;
+          repost_of_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -90,6 +94,8 @@ export interface Database {
           reposts_count?: number;
           is_reply?: boolean;
           reply_to_id?: string | null;
+          is_repost?: boolean;
+          repost_of_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
