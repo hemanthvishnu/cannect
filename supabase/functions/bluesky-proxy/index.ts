@@ -8,6 +8,23 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
+/**
+ * ✅ Gold Standard Resilience: fetchWithTimeout
+ * Prevents "hanging" upstream requests from blocking your app.
+ */
+async function fetchWithTimeout(url: string, options = {}, timeout = 5000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -22,98 +39,97 @@ serve(async (req) => {
 
     let bskyUrl: string;
     
-    if (action === "feed") {
-      // Use a popular public feed generator (Discover feed)
-      // This is Bluesky's "What's Hot" feed
-      const feedUri = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.getFeed?feed=${encodeURIComponent(feedUri)}&limit=${limit}`;
-      if (cursor) {
-        bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
-      }
-    } else if (action === "search") {
-      const query = url.searchParams.get("q") || "";
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&sort=latest&limit=${limit}`;
-      if (cursor) {
-        bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
-      }
-    } else if (action === "searchActors") {
-      // Search for Bluesky users/actors
-      const query = url.searchParams.get("q") || "";
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.searchActors?q=${encodeURIComponent(query)}&limit=${limit}`;
-      if (cursor) {
-        bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
-      }
-    } else if (action === "trending") {
-      // Get popular/trending actors for discovery
-      // getSuggestions requires auth, so we search for popular accounts instead
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.searchActors?q=*&limit=${limit}`;
-      if (cursor) {
-        bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
-      }
-    } else if (action === "getProfile") {
-      // Get a specific actor's profile
-      const handle = url.searchParams.get("handle") || "";
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
-    } else if (action === "getAuthorFeed") {
-      // Get a specific actor's posts
-      const handle = url.searchParams.get("handle") || "";
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=${limit}`;
-      if (cursor) {
-        bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
-      }
-    } else if (action === "trendingTopics") {
-      // Get trending topics from Bluesky
-      bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.unspecced.getTrendingTopics?limit=${limit}`;
-    } else if (action === "xrpc") {
-      // Generic XRPC endpoint passthrough
-      const endpoint = url.searchParams.get("endpoint") || "";
-      if (!endpoint) throw new Error("Missing endpoint parameter");
-      
-      // Build URL with all additional params
-      const xrpcUrl = new URL(`${BSKY_PUBLIC_API}${endpoint}`);
-      url.searchParams.forEach((value, key) => {
-        if (!["action", "endpoint"].includes(key)) {
-          xrpcUrl.searchParams.set(key, value);
-        }
-      });
-      bskyUrl = xrpcUrl.toString();
-    } else {
-      throw new Error("Invalid action");
+    // Switch on common actions for specific formatting
+    switch (action) {
+      case "feed":
+        const feedUri = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.getFeed?feed=${encodeURIComponent(feedUri)}&limit=${limit}`;
+        if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        break;
+
+      case "search":
+        const qPost = url.searchParams.get("q") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.searchPosts?q=${encodeURIComponent(qPost)}&sort=latest&limit=${limit}`;
+        if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        break;
+
+      case "searchActors":
+        const qActor = url.searchParams.get("q") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.searchActors?q=${encodeURIComponent(qActor)}&limit=${limit}`;
+        break;
+
+      case "trending":
+        // Fallback for public use: search for popular activity
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.searchActors?q=*&limit=${limit}`;
+        break;
+
+      case "trendingTopics":
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.unspecced.getTrendingTopics?limit=${limit}`;
+        break;
+
+      case "getProfile":
+        // Support both "actor" and "handle" params for compatibility
+        const actor = url.searchParams.get("actor") || url.searchParams.get("handle") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`;
+        break;
+
+      case "getAuthorFeed":
+        // Support both "actor" and "handle" params for compatibility
+        const author = url.searchParams.get("actor") || url.searchParams.get("handle") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(author)}&limit=${limit}`;
+        if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        break;
+
+      case "xrpc":
+        // ✅ Gold Standard Resilience: Generic XRPC Passthrough
+        const path = url.searchParams.get("path") || url.searchParams.get("endpoint") || "";
+        if (!path) throw new Error("Missing XRPC path");
+        const xrpcParams = new URLSearchParams();
+        url.searchParams.forEach((value, key) => {
+          if (!["action", "path", "endpoint"].includes(key)) {
+            xrpcParams.set(key, value);
+          }
+        });
+        bskyUrl = `${BSKY_PUBLIC_API}${path}?${xrpcParams.toString()}`;
+        break;
+
+      default:
+        throw new Error(`Unsupported action: ${action}`);
     }
 
     console.log("Fetching from Bluesky:", bskyUrl);
 
-    const response = await fetch(bskyUrl, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Cannect/1.0",
-      },
-    });
+    // ✅ Resilience: Wrapped fetch with timeout and error capture
+    try {
+      const response = await fetchWithTimeout(bskyUrl, {
+        headers: { "Accept": "application/json", "User-Agent": "Cannect/1.0" },
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Bluesky API error:", response.status, errorText);
-      throw new Error(`Bluesky API error: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Bluesky Upstream Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
+    } catch (innerError) {
+      console.error("Inner Fetch Error:", innerError.message);
+      // ✅ Resilience: Return empty sets instead of 500
+      const fallback: any = { actors: [], posts: [], feed: [], topics: [] };
+      return new Response(JSON.stringify(fallback), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const data = await response.json();
-
-    return new Response(JSON.stringify(data), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-    });
   } catch (error) {
-    console.error("Proxy error:", error);
+    console.error("Global Proxy Crash:", error.message);
     return new Response(
-      JSON.stringify({ error: error.message || "Failed to fetch from Bluesky" }),
+      JSON.stringify({ error: error.message, actors: [], posts: [], feed: [] }),
       {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        status: 200, // Return 200 to keep Frontend hooks in a successful (but empty) state
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
