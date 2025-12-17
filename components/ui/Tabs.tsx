@@ -1,8 +1,6 @@
 import { createContext, useContext } from "react";
-import { View, Text, Pressable, type ViewProps, type PressableProps } from "react-native";
+import { View, Text, Pressable, Platform, type ViewProps, type PressableProps } from "react-native";
 import { cn } from "@/lib/utils";
-import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
 
 /**
  * Gold Standard Tabs Component
@@ -10,6 +8,17 @@ import { Platform } from "react-native";
  * A accessible, haptic-enabled tab navigation component following
  * the React Native Reusables pattern.
  */
+
+// Haptics helper - only import on native platforms
+const triggerHaptic = async () => {
+  if (Platform.OS === "web") return;
+  try {
+    const Haptics = await import("expo-haptics");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch {
+    // expo-haptics not available, silently ignore
+  }
+};
 
 // Context for sharing state between Tabs primitives
 interface TabsContextValue {
@@ -74,10 +83,8 @@ export function TabsTrigger({ value, children, className, disabled, ...props }: 
   const handlePress = () => {
     if (disabled) return;
     
-    // Haptic feedback on tab change
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    // Haptic feedback on tab change (native only)
+    triggerHaptic();
     
     onValueChange(value);
   };
