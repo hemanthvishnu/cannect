@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { Heart, MessageCircle, MoreHorizontal, ChevronRight } from "lucide-react-native";
+import { Heart, MessageCircle, Repeat2, MoreHorizontal, ChevronRight } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "@/lib/utils/date";
@@ -20,7 +20,9 @@ interface Comment {
   author: Author;
   likes_count?: number;
   replies_count?: number;
+  reposts_count?: number; // ✅ Everything is a Post: Comments can be reposted
   is_liked?: boolean;
+  is_reposted_by_me?: boolean;
   media_urls?: string[]; // ✅ Asset Guard: Support for media in replies
 }
 
@@ -30,6 +32,7 @@ interface ThreadCommentProps {
   isReply?: boolean;
   onReplyPress?: () => void;
   onLikePress?: () => void;
+  onRepostPress?: () => void; // ✅ Everything is a Post: Repost promotes comment to top-level
   onProfilePress?: () => void;
   onPivot?: () => void; // Navigate to make this comment the main post
 }
@@ -40,6 +43,7 @@ export function ThreadComment({
   isReply = false,
   onReplyPress,
   onLikePress,
+  onRepostPress,
   onProfilePress,
   onPivot
 }: ThreadCommentProps) {
@@ -134,6 +138,27 @@ export function ThreadComment({
             {(comment.replies_count ?? 0) > 0 && (
               <Text className="text-xs font-medium text-text-muted">
                 {comment.replies_count}
+              </Text>
+            )}
+          </Pressable>
+
+          {/* ✅ Everything is a Post: Repost promotes this comment to a top-level post */}
+          <Pressable 
+            onPress={(e) => { e.stopPropagation(); onRepostPress?.(); }}
+            className="flex-row items-center gap-1.5 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Repost"
+          >
+            <Repeat2 
+              size={16} 
+              color={comment.is_reposted_by_me ? "#10B981" : "#6B7280"}
+            />
+            {(comment.reposts_count ?? 0) > 0 && (
+              <Text className={cn(
+                "text-xs font-medium",
+                comment.is_reposted_by_me ? "text-primary" : "text-text-muted"
+              )}>
+                {comment.reposts_count}
               </Text>
             )}
           </Pressable>

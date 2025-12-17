@@ -91,6 +91,20 @@ export default function PostDetailsScreen() {
     }
   };
 
+  // ✅ Everything is a Post: Handle repost for comments (promotes to top-level)
+  const handleCommentRepost = (comment: PostWithAuthor) => {
+    const isReposted = (comment as any).is_reposted_by_me === true;
+    
+    if (isReposted) {
+      toggleRepostMutation.mutate({ post: comment, undo: true });
+    } else {
+      Alert.alert("Repost Comment", "Share this reply with your followers?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Repost", onPress: () => toggleRepostMutation.mutate({ post: comment }) }
+      ]);
+    }
+  };
+
   const handleMore = () => {
     if (!post || post.user_id !== user?.id) return;
     Alert.alert("Manage Post", "Delete this post?", [
@@ -186,11 +200,14 @@ export default function PostDetailsScreen() {
                 author: item.author,
                 likes_count: item.likes_count,
                 replies_count: item.comments_count,
+                reposts_count: item.reposts_count,
                 is_liked: item.is_liked,
+                is_reposted_by_me: (item as any).is_reposted_by_me,
               }}
               isLast={index === (replies?.length ?? 0) - 1}
               onReplyPress={() => startReplyToComment({ id: item.id, author: item.author })}
               onLikePress={() => handleLike(item)}
+              onRepostPress={() => handleCommentRepost(item)}
               onProfilePress={() => router.push(`/user/${item.author?.username}` as any)}
             />
           )}
