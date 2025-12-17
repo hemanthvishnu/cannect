@@ -104,14 +104,14 @@ export default function ProfileScreen() {
 
           // Empty State
           ListEmptyComponent={
-            <View className="py-20 items-center gap-4">
-              <Text className="text-text-muted text-lg">
-                {activeTab === 'posts' && "No posts yet"}
-                {activeTab === 'replies' && "No replies yet"}
-                {activeTab === 'media' && "No media yet"}
+            <View className="py-20 items-center px-10 gap-4">
+              <Text className="text-text-muted text-center text-lg font-medium">
+                {activeTab === 'posts' && "You haven't shared your first post yet!"}
+                {activeTab === 'replies' && "You haven't replied to anyone yet."}
+                {activeTab === 'media' && "Your shared media will appear here."}
               </Text>
               {activeTab === 'posts' && (
-                <Text className="text-text-secondary text-sm">
+                <Text className="text-text-secondary text-sm text-center">
                   Share your first thought with the community!
                 </Text>
               )}

@@ -253,15 +253,15 @@ export function useUserPosts(userId: string, tab: ProfileTab = 'posts') {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      // ✅ Gold Standard Tab Filtering
+      // ✅ Diamond Standard Tab Filtering
       if (tab === 'posts') {
-        // Show original posts and reposts, but NOT direct replies
-        query = query.or('is_reply.eq.false,type.eq.repost');
+        // Show ONLY original content (posts, reposts, quotes) - strictly exclude replies
+        query = query.eq('is_reply', false);
       } else if (tab === 'replies') {
-        // Show ONLY replies (not reposts)
-        query = query.eq('is_reply', true).neq('type', 'repost');
+        // Show ONLY conversational interactions - all replies
+        query = query.eq('is_reply', true);
       } else if (tab === 'media') {
-        // Show only posts that have media URLs
+        // Show any post with media attachments (visual portfolio)
         query = query.not('media_urls', 'is', null);
       }
 

@@ -164,11 +164,11 @@ export default function UserProfileScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <View className="py-12 items-center">
-              <Text className="text-text-muted text-base">
-                {activeTab === 'posts' && "No posts yet"}
-                {activeTab === 'replies' && "No replies yet"}
-                {activeTab === 'media' && "No media yet"}
+            <View className="py-20 items-center px-8">
+              <Text className="text-text-muted text-center text-lg font-medium">
+                {activeTab === 'posts' && "This user hasn't posted anything yet."}
+                {activeTab === 'replies' && "No conversations found for this user."}
+                {activeTab === 'media' && "No photos or videos shared yet."}
               </Text>
             </View>
           }
