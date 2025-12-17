@@ -1,9 +1,10 @@
-import { View, Alert, Text } from "react-native";
+import { View, Alert, Text, Platform, ActivityIndicator } from "react-native";
 import { useState } from "react";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { useProfileByUsername, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost, ProfileTab } from "@/lib/hooks";
+import * as Haptics from "expo-haptics";
+import { useProfileByUsername, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost, useFollowUser, useUnfollowUser, useIsFollowing, ProfileTab } from "@/lib/hooks";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
 import { SocialPost } from "@/components/social/SocialPost";
 import { MediaGridItem } from "@/components/Profile";
@@ -23,12 +24,33 @@ export default function UserProfileScreen() {
   // Then use the profile's actual UUID for posts with tab filtering
   const { data: postsData, fetchNextPage, hasNextPage, isFetchingNextPage } = useUserPosts(profile?.id ?? "", activeTab);
   
+  // ✅ Platinum: Follow state and mutations
+  const { data: isFollowing } = useIsFollowing(profile?.id ?? "");
+  const followMutation = useFollowUser();
+  const unfollowMutation = useUnfollowUser();
+  
   const likeMutation = useLikePost();
   const unlikeMutation = useUnlikePost();
   const toggleRepostMutation = useToggleRepost();
   const deleteMutation = useDeletePost();
 
   const posts = postsData?.pages.flat() || [];
+  
+  // ✅ Platinum: Follow toggle with haptic feedback
+  const handleFollowToggle = () => {
+    if (!profile || currentUser?.id === profile.id) return;
+    
+    // Haptic feedback for satisfying "click"
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    
+    if (isFollowing) {
+      unfollowMutation.mutate(profile.id);
+    } else {
+      followMutation.mutate(profile.id);
+    }
+  };
   
   // Consistent handleLike that targets original post for reposts
   const handleLike = (post: any) => {
@@ -60,7 +82,9 @@ export default function UserProfileScreen() {
     <View>
       <ProfileHeader 
         profile={profile!} 
-        isCurrentUser={currentUser?.id === profile!.id} 
+        isCurrentUser={currentUser?.id === profile!.id}
+        isFollowing={isFollowing ?? false}
+        onFollowPress={handleFollowToggle}
       />
       
       {/* ✅ Platinum Tab Bar (RNR) */}

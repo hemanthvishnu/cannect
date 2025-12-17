@@ -15,6 +15,7 @@ export interface Database {
           username: string;
           display_name: string | null;
           avatar_url: string | null;
+          cover_url: string | null;
           bio: string | null;
           website: string | null;
           followers_count: number;
@@ -29,6 +30,7 @@ export interface Database {
           username: string;
           display_name?: string | null;
           avatar_url?: string | null;
+          cover_url?: string | null;
           bio?: string | null;
           website?: string | null;
           followers_count?: number;
@@ -43,6 +45,7 @@ export interface Database {
           username?: string;
           display_name?: string | null;
           avatar_url?: string | null;
+          cover_url?: string | null;
           bio?: string | null;
           website?: string | null;
           followers_count?: number;

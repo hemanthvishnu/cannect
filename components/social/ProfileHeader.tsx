@@ -24,12 +24,23 @@ export function ProfileHeader({
   onSharePress 
 }: ProfileHeaderProps) {
   const avatarUrl = profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.username}&background=10B981&color=fff`;
+  const coverUrl = profile.cover_url;
 
   return (
     <View className="bg-background border-b border-border pb-2">
-      {/* Cover Image Area */}
+      {/* Cover Image Area - shows custom cover or gradient fallback */}
       <View className="h-32 bg-surface w-full relative">
-        <View className="absolute inset-0 bg-gradient-to-b from-primary/20 to-transparent" />
+        {coverUrl ? (
+          <Image
+            source={{ uri: coverUrl }}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+          />
+        ) : (
+          <View className="absolute inset-0 bg-gradient-to-br from-primary/30 via-primary/10 to-surface" />
+        )}
+        {/* Subtle gradient overlay for readability */}
+        <View className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
         <View className="absolute bottom-2 right-4 flex-row gap-2">
           <Pressable 
             className="bg-black/50 p-2 rounded-full"
