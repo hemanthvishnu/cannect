@@ -2,18 +2,21 @@ import { View, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { useProfile, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost } from "@/lib/hooks";
+import { useProfileByUsername, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost } from "@/lib/hooks";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
 import { SocialPost } from "@/components/social/SocialPost";
 import { useAuthStore } from "@/lib/stores";
 
 export default function UserProfileScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // The route param is named 'id' but it's actually a username
+  const { id: username } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user: currentUser } = useAuthStore();
   
-  const { data: profile, isLoading: isProfileLoading } = useProfile(id!);
-  const { data: postsData, fetchNextPage, hasNextPage } = useUserPosts(id!);
+  // Look up profile by username first
+  const { data: profile, isLoading: isProfileLoading } = useProfileByUsername(username!);
+  // Then use the profile's actual UUID for posts
+  const { data: postsData, fetchNextPage, hasNextPage } = useUserPosts(profile?.id ?? "");
   
   const likeMutation = useLikePost();
   const unlikeMutation = useUnlikePost();
@@ -65,7 +68,7 @@ export default function UserProfileScreen() {
         ListHeaderComponent={
           <ProfileHeader 
             profile={profile} 
-            isCurrentUser={currentUser?.id === id} 
+            isCurrentUser={currentUser?.id === profile.id} 
           />
         }
         renderItem={({ item }) => (
@@ -75,7 +78,7 @@ export default function UserProfileScreen() {
             onRepost={() => handleRepost(item)}
             onReply={() => router.push(`/post/${item.id}` as any)}
             onPress={() => router.push(`/post/${item.id}` as any)}
-            onProfilePress={() => router.push(`/user/${item.user_id}` as any)}
+            onProfilePress={() => router.push(`/user/${item.author?.username}` as any)}
             onQuotedPostPress={(quotedPostId) => router.push(`/post/${quotedPostId}` as any)}
             onMore={() => {
               if (currentUser?.id === item.user_id) {

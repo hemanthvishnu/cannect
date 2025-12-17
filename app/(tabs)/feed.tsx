@@ -85,8 +85,8 @@ export default function FeedScreen() {
     }
   };
 
-  const handleProfilePress = (userId: string) => {
-    router.push(`/user/${userId}` as any);
+  const handleProfilePress = (username: string) => {
+    router.push(`/user/${username}` as any);
   };
 
   const handlePostPress = (postId: string) => {
@@ -328,7 +328,7 @@ export default function FeedScreen() {
                     // For Cannect reposts, navigate to reposter's profile
                     // For live global, no navigation (external profile)
                     if (!isLiveGlobal || isCannectRepostOfGlobal) {
-                      handleProfilePress(item.user_id);
+                      handleProfilePress(item.author?.username || '');
                     }
                   }}
                   onPress={() => {

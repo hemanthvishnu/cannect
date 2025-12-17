@@ -161,7 +161,7 @@ export default function PostDetailsScreen() {
                 post={post}
                 onLike={() => handleLike(post)}
                 onReply={() => setReplyTargetId(id)} 
-                onProfilePress={() => router.push(`/user/${post.user_id}` as any)}
+                onProfilePress={() => router.push(`/user/${post.author?.username}` as any)}
                 onShare={handleShare}
                 onRepost={handleRepost}
                 onMore={handleMore}
@@ -191,7 +191,7 @@ export default function PostDetailsScreen() {
               isLast={index === (replies?.length ?? 0) - 1}
               onReplyPress={() => startReplyToComment({ id: item.id, author: item.author })}
               onLikePress={() => handleLike(item)}
-              onProfilePress={() => router.push(`/user/${item.user_id}` as any)}
+              onProfilePress={() => router.push(`/user/${item.author?.username}` as any)}
             />
           )}
           
