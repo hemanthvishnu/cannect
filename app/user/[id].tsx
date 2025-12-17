@@ -3,10 +3,8 @@ import { useState } from "react";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useProfileByUsername, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost, useFollowUser, useUnfollowUser, useIsFollowing, ProfileTab } from "@/lib/hooks";
-import { queryKeys } from "@/lib/query-client";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
 import { SocialPost } from "@/components/social/SocialPost";
 import { MediaGridItem } from "@/components/Profile";
@@ -18,7 +16,6 @@ export default function UserProfileScreen() {
   // The route param is named 'id' but it's actually a username
   const { id: username } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   
@@ -53,17 +50,6 @@ export default function UserProfileScreen() {
     } else {
       followMutation.mutate(profile.id);
     }
-  };
-
-  // ✅ Platinum: Prefetch tab data on touch start for instant switching
-  const prefetchTab = (tab: ProfileTab) => {
-    if (!profile?.id) return;
-    queryClient.prefetchInfiniteQuery({
-      queryKey: [...queryKeys.posts.byUser(profile.id), tab],
-      initialPageParam: 0,
-      queryFn: () => Promise.resolve([]), // Data will be fetched by useUserPosts
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    });
   };
   
   // Consistent handleLike that targets original post for reposts
@@ -155,9 +141,9 @@ export default function UserProfileScreen() {
       {/* ✅ Platinum Tab Bar - outside FlashList for stability */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ProfileTab)}>
         <TabsList>
-          <TabsTrigger value="posts" onPressIn={() => prefetchTab('posts')}>Posts</TabsTrigger>
-          <TabsTrigger value="replies" onPressIn={() => prefetchTab('replies')}>Replies</TabsTrigger>
-          <TabsTrigger value="media" onPressIn={() => prefetchTab('media')}>Media</TabsTrigger>
+          <TabsTrigger value="posts">Posts</TabsTrigger>
+          <TabsTrigger value="replies">Replies</TabsTrigger>
+          <TabsTrigger value="media">Media</TabsTrigger>
         </TabsList>
       </Tabs>
       
