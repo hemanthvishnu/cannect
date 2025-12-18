@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, ScrollView, NativeSyntheticEvent, NativeScrollEvent, useWindowDimensions } from 'react-native';
+import { View, ScrollView, Pressable, NativeSyntheticEvent, NativeScrollEvent, useWindowDimensions } from 'react-native';
 import { PostMedia } from './PostMedia';
+import { MediaViewer } from '../ui/MediaViewer';
 
 interface PostCarouselProps {
   mediaUrls: string[];
@@ -9,6 +10,8 @@ interface PostCarouselProps {
 
 export function PostCarousel({ mediaUrls, isFederated = false }: PostCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
   
   // Padding adjustment to match feed's horizontal margins (px-4 = 16px each side)
@@ -20,13 +23,26 @@ export function PostCarousel({ mediaUrls, isFederated = false }: PostCarouselPro
     if (index !== activeIndex) setActiveIndex(index);
   };
 
+  const openViewer = (index: number) => {
+    setViewerIndex(index);
+    setViewerOpen(true);
+  };
+
   if (!mediaUrls || mediaUrls.length === 0) return null;
 
   // Single image: render directly without carousel overhead
   if (mediaUrls.length === 1) {
     return (
       <View className="mt-3">
-        <PostMedia uri={mediaUrls[0]} isFederated={isFederated} />
+        <Pressable onPress={() => openViewer(0)}>
+          <PostMedia uri={mediaUrls[0]} isFederated={isFederated} />
+        </Pressable>
+        <MediaViewer
+          isVisible={viewerOpen}
+          images={mediaUrls}
+          initialIndex={0}
+          onClose={() => setViewerOpen(false)}
+        />
       </View>
     );
   }
@@ -45,9 +61,13 @@ export function PostCarousel({ mediaUrls, isFederated = false }: PostCarouselPro
         disableIntervalMomentum
       >
         {mediaUrls.map((url, index) => (
-          <View key={`${url}-${index}`} style={{ width: carouselWidth }}>
+          <Pressable 
+            key={`${url}-${index}`} 
+            style={{ width: carouselWidth }}
+            onPress={() => openViewer(index)}
+          >
             <PostMedia uri={url} isFederated={isFederated} />
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
 
@@ -62,6 +82,14 @@ export function PostCarousel({ mediaUrls, isFederated = false }: PostCarouselPro
           />
         ))}
       </View>
+
+      {/* Fullscreen Media Viewer */}
+      <MediaViewer
+        isVisible={viewerOpen}
+        images={mediaUrls}
+        initialIndex={viewerIndex}
+        onClose={() => setViewerOpen(false)}
+      />
     </View>
   );
 }
