@@ -221,11 +221,11 @@ export default function UserProfileScreen() {
         </TabsList>
       </Tabs>
       
-      <View style={{ flex: 1, minHeight: 2 }}>
+      <View style={{ flex: 1, minHeight: 100 }}>
         <FlashList
           key={activeTab === 'media' ? 'grid' : 'list'}
           data={posts}
-          keyExtractor={(item) => `${activeTab}-${item.id}`}
+          keyExtractor={(item, index) => `${activeTab}-${item.id}-${index}`}
           numColumns={activeTab === 'media' ? 3 : 1}
           estimatedItemSize={activeTab === 'media' ? 120 : 200}
           renderItem={renderItem}

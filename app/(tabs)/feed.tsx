@@ -317,10 +317,10 @@ export default function FeedScreen() {
           <ActivityIndicator size="large" color="#10B981" />
         </View>
       ) : (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minHeight: 100 }}>
           <FlashList
             data={posts}
-            keyExtractor={(item) => `${activeTab}-${item.id}`}
+            keyExtractor={(item, index) => `${activeTab}-${item.id}-${index}`}
             renderItem={({ item }) => {
               // Live Global = direct from Bluesky API (read-only except repost)
               const isLiveGlobal = (item as any).is_federated === true;
