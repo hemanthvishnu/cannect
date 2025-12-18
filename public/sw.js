@@ -1,10 +1,14 @@
-// Service Worker for Web Push Notifications & Offline Support
-// This file must be at the root of your web app (public/sw.js)
+// =====================================================
+// Cannect Service Worker v2.0
+// Handles: Push Notifications + Cache Management + Updates
+// =====================================================
 
-const CACHE_NAME = 'cannect-v1';
+// Cache versioning - INCREMENT THIS ON EVERY DEPLOY
+const CACHE_VERSION = 'v1.0.0';
+const CACHE_NAME = `cannect-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
-// Assets to pre-cache for offline support
+// Assets to precache (shell of the app)
 const PRECACHE_ASSETS = [
   OFFLINE_URL,
   '/icon-192.png',
@@ -12,67 +16,132 @@ const PRECACHE_ASSETS = [
   '/badge-72.png',
 ];
 
+// =====================================================
+// Install Event - Precache Core Assets
+// =====================================================
 self.addEventListener('install', (event) => {
-  console.log('[SW] Service Worker installed');
+  console.log(`[SW] Installing version ${CACHE_VERSION}`);
   
-  // Pre-cache offline assets
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Pre-caching offline assets');
-      return cache.addAll(PRECACHE_ASSETS);
-    })
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[SW] Precaching app shell');
+        return cache.addAll(PRECACHE_ASSETS);
+      })
+      .then(() => {
+        console.log('[SW] Precache complete');
+      })
   );
   
-  self.skipWaiting();
+  // Don't call skipWaiting here - we want to control this from the UI
+  // The PWAUpdater component will send SKIP_WAITING message when user clicks "Update"
 });
 
+// =====================================================
+// Activate Event - Clean Old Caches
+// =====================================================
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Service Worker activated');
+  console.log(`[SW] Activating version ${CACHE_VERSION}`);
   
-  // Clean up old caches
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+          .filter((name) => name.startsWith('cannect-') && name !== CACHE_NAME)
+          .map((name) => {
+            console.log(`[SW] Deleting old cache: ${name}`);
+            return caches.delete(name);
+          })
       );
-    }).then(() => clients.claim())
+    }).then(() => {
+      console.log('[SW] Old caches cleared, claiming clients');
+      return self.clients.claim();
+    })
   );
 });
 
-// Handle fetch requests with offline fallback
+// =====================================================
+// Fetch Event - Network First, Cache Fallback
+// =====================================================
 self.addEventListener('fetch', (event) => {
-  // Only handle navigation requests (HTML pages)
-  if (event.request.mode === 'navigate') {
+  const { request } = event;
+  
+  // Skip non-GET requests
+  if (request.method !== 'GET') return;
+  
+  // Skip non-http(s) requests
+  if (!request.url.startsWith('http')) return;
+  
+  // Skip API requests (always fetch fresh)
+  if (request.url.includes('/functions/') || 
+      request.url.includes('supabase.co') ||
+      request.url.includes('/rest/') ||
+      request.url.includes('cloudflare')) {
+    return;
+  }
+  
+  // For navigation requests (HTML pages) - Network first with offline fallback
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(OFFLINE_URL);
-      })
+      fetch(request)
+        .then((response) => {
+          // Cache successful HTML responses
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Offline - return cached version or offline page
+          return caches.match(request).then((cached) => {
+            return cached || caches.match(OFFLINE_URL);
+          });
+        })
     );
     return;
   }
   
-  // For other requests, try network first, then cache
+  // For static assets - Stale-while-revalidate strategy
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful responses for static assets
-        if (response.ok && event.request.url.match(/\.(png|jpg|jpeg|svg|ico|woff2?)$/)) {
+    caches.match(request).then((cached) => {
+      // Return cached immediately, but update in background
+      const fetchPromise = fetch(request).then((response) => {
+        if (response.ok) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+            cache.put(request, responseClone);
           });
         }
         return response;
-      })
-      .catch(() => {
-        return caches.match(event.request);
-      })
+      }).catch(() => cached);
+      
+      return cached || fetchPromise;
+    })
   );
 });
 
-// Handle incoming push notifications
+// =====================================================
+// Message Event - Handle Skip Waiting & Version Query
+// =====================================================
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+  
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] Skip waiting triggered - activating new version');
+    self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0].postMessage({ version: CACHE_VERSION });
+  }
+});
+
+// =====================================================
+// Push Notification Handling
+// =====================================================
 self.addEventListener('push', (event) => {
   console.log('[SW] Push received:', event);
   
@@ -105,7 +174,9 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Handle notification click
+// =====================================================
+// Notification Click Handling
+// =====================================================
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification clicked:', event);
   
@@ -127,7 +198,6 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open, focus it and navigate
       for (const client of clientList) {
         if ('focus' in client) {
           client.focus();
@@ -135,7 +205,6 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      // Otherwise open a new window
       if (clients.openWindow) {
         return clients.openWindow(url);
       }
@@ -143,7 +212,11 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Handle notification close
+// =====================================================
+// Notification Close Handling
+// =====================================================
 self.addEventListener('notificationclose', (event) => {
   console.log('[SW] Notification closed:', event);
 });
+
+console.log(`[SW] Service Worker loaded - Version ${CACHE_VERSION}`);

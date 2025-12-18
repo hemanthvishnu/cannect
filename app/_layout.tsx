@@ -12,6 +12,7 @@ import { queryClient } from "@/lib/query-client";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/lib/stores";
 import { usePushNotifications } from "@/lib/hooks";
+import { PWAUpdater } from "@/components/PWAUpdater";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -38,6 +39,9 @@ function AppContent() {
           animation: "slide_from_right",
         }}
       />
+      
+      {/* 💎 PWA Update Toast - Shows when new version is available */}
+      <PWAUpdater checkInterval={60000} />
     </SafeAreaProvider>
   );
 }
