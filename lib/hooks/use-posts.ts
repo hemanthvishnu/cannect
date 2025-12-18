@@ -481,6 +481,91 @@ export function useCreatePost() {
   });
 }
 
+/**
+ * Diamond Standard: Create Reply with Optimistic Updates
+ * 
+ * The reply appears INSTANTLY in the thread with a "sending..." state.
+ * If the server fails, it gracefully rolls back.
+ */
+export function useCreateReply(postId: string) {
+  const queryClient = useQueryClient();
+  const { user, profile } = useAuthStore();
+
+  return useMutation({
+    mutationFn: async (content: string) => {
+      if (!user) throw new Error("Not authenticated");
+      
+      const { data, error } = await supabase
+        .from("posts")
+        .insert({
+          user_id: user.id,
+          content,
+          reply_to_id: postId,
+          is_reply: true,
+          type: "post",
+          is_repost: false,
+        })
+        .select(`*, author:profiles!user_id(*)`)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    // ✅ Optimistic Update: Instant feedback
+    onMutate: async (newContent) => {
+      // 1. Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.replies(postId) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.posts.detail(postId) });
+
+      // 2. Snapshot current cache for rollback
+      const previousReplies = queryClient.getQueryData(queryKeys.posts.replies(postId));
+      const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(postId));
+
+      // 3. Optimistically inject the new reply
+      queryClient.setQueryData(queryKeys.posts.replies(postId), (old: any) => {
+        const optimisticReply = {
+          id: `optimistic-${Date.now()}`,
+          content: newContent,
+          user_id: user?.id,
+          author: {
+            id: user?.id,
+            username: profile?.username || user?.email?.split("@")[0] || "you",
+            display_name: profile?.display_name || null,
+            avatar_url: profile?.avatar_url || null,
+          },
+          created_at: new Date().toISOString(),
+          likes_count: 0,
+          comments_count: 0,
+          reposts_count: 0,
+          is_liked: false,
+          is_optimistic: true, // 👈 Flag for "sending..." UI state
+        };
+        return [...(old || []), optimisticReply];
+      });
+
+      // 4. Optimistically increment parent's comments_count
+      queryClient.setQueryData(queryKeys.posts.detail(postId), (old: any) => {
+        if (!old) return old;
+        return { ...old, comments_count: (old.comments_count || 0) + 1 };
+      });
+
+      return { previousReplies, previousDetail };
+    },
+    onError: (err, newContent, context) => {
+      // Rollback on failure
+      queryClient.setQueryData(queryKeys.posts.replies(postId), context?.previousReplies);
+      queryClient.setQueryData(queryKeys.posts.detail(postId), context?.previousDetail);
+    },
+    onSettled: () => {
+      // Sync with server to get real IDs
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.replies(postId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
+      // Also invalidate user's profile to show new reply in Replies tab
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.byUser(user?.id!) });
+    },
+  });
+}
+
 export function useRepost() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();

@@ -1,6 +1,8 @@
-import { View, Text, Pressable, type ViewProps } from "react-native";
+import { View, Text, Pressable, type ViewProps, Platform, Animated } from "react-native";
 import { Image } from "expo-image";
 import { Heart, MessageCircle, Repeat2, Share, MoreHorizontal, BadgeCheck, Globe2 } from "lucide-react-native";
+import { useRef } from "react";
+import * as Haptics from "expo-haptics";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { ASSET_RATIOS, BLURHASH_PLACEHOLDERS } from "@/lib/utils/assets";
@@ -37,11 +39,13 @@ const PostFooter = ({ className, ...props }: ViewProps) => (
 );
 
 interface ActionButtonProps {
-  icon: React.ComponentType<{ size: number; color: string; strokeWidth?: number }>;
+  icon: React.ComponentType<any>;
   count?: number;
   active?: boolean;
   activeColor?: string;
   onPress?: () => void;
+  hapticStyle?: "light" | "medium" | "success";
+  fill?: boolean; // Fill icon when active (for hearts)
 }
 
 const ActionButton = ({ 
@@ -49,25 +53,64 @@ const ActionButton = ({
   count, 
   active, 
   activeColor = "#EF4444", // red-500
-  onPress 
-}: ActionButtonProps) => (
-  <Pressable 
-    onPress={onPress} 
-    className="flex-row items-center gap-1.5 p-1 -ml-2 active:opacity-70"
-    accessibilityRole="button"
-  >
-    <Icon 
-      size={18} 
-      color={active ? activeColor : "#6B7280"} 
-      strokeWidth={2}
-    />
-    {count !== undefined && count > 0 && (
-      <Text className="text-sm font-medium" style={{ color: active ? activeColor : "#6B7280" }}>
-        {count}
-      </Text>
-    )}
-  </Pressable>
-);
+  onPress,
+  hapticStyle = "light",
+  fill = false,
+}: ActionButtonProps) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePress = () => {
+    // ✅ Diamond Standard: Haptic feedback
+    if (Platform.OS !== "web") {
+      if (hapticStyle === "success") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else if (hapticStyle === "medium") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    }
+
+    // ✅ Diamond Standard: Micro bounce animation
+    Animated.sequence([
+      Animated.spring(scaleAnim, {
+        toValue: 1.3,
+        friction: 3,
+        tension: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 5,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    onPress?.();
+  };
+
+  return (
+    <Pressable 
+      onPress={handlePress} 
+      className="flex-row items-center gap-1.5 p-1 -ml-2 active:opacity-70"
+      accessibilityRole="button"
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <Icon 
+          size={18} 
+          color={active ? activeColor : "#6B7280"} 
+          strokeWidth={2}
+          fill={fill && active ? activeColor : "transparent"}
+        />
+      </Animated.View>
+      {count !== undefined && count > 0 && (
+        <Text className="text-sm font-medium" style={{ color: active ? activeColor : "#6B7280" }}>
+          {count}
+        </Text>
+      )}
+    </Pressable>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Main SocialPost Component
@@ -364,6 +407,7 @@ export function SocialPost({
             active={(post as any).is_reposted_by_me === true} 
             activeColor="#10B981"
             onPress={onRepost} // Always enabled - allows shadow reposting
+            hapticStyle="medium"
           />
           <ActionButton 
             icon={Heart} 
@@ -371,6 +415,8 @@ export function SocialPost({
             active={isCannectRepostOfGlobal ? post.is_liked : displayPost?.is_liked} 
             activeColor="#EF4444"
             onPress={interactionsDisabled ? undefined : onLike}
+            hapticStyle="light"
+            fill={true}
           />
           <ActionButton 
             icon={Share} 

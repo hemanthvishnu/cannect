@@ -25,6 +25,7 @@ interface Comment {
   is_liked?: boolean;
   is_reposted_by_me?: boolean;
   media_urls?: string[]; // ✅ Asset Guard: Support for media in replies
+  is_optimistic?: boolean; // ✅ Diamond Standard: Optimistic update flag
 }
 
 interface ThreadCommentProps {
@@ -54,6 +55,9 @@ export function ThreadComment({
   const avatarUrl = comment.author?.avatar_url || 
     `https://ui-avatars.com/api/?name=${comment.author?.username || "U"}&background=10B981&color=fff`;
 
+  // ✅ Diamond Standard: Optimistic "ghost" state
+  const isSyncing = comment.is_optimistic === true;
+
   // Pivot: Navigate to this comment as the "main post" of a new thread view
   const handlePivot = () => {
     if (onPivot) {
@@ -66,7 +70,12 @@ export function ThreadComment({
   return (
     <Pressable 
       onPress={handlePivot}
-      className={cn("flex-row px-4 bg-background active:bg-surface/50", isReply && "pl-8")}
+      disabled={isSyncing}
+      className={cn(
+        "flex-row px-4 bg-background active:bg-surface/50", 
+        isReply && "pl-8",
+        isSyncing && "opacity-50" // Ghost state for optimistic updates
+      )}
     >
       {/* Left Column: Avatar + Connector Line */}
       <View className="items-center mr-3">
@@ -97,9 +106,15 @@ export function ThreadComment({
             <Text className="text-text-muted text-xs">
               @{comment.author?.username || "user"}
             </Text>
-            <Text className="text-text-muted text-xs">
-              · {formatDistanceToNow(new Date(comment.created_at))}
-            </Text>
+            {isSyncing ? (
+              <Text className="text-[10px] text-primary font-bold ml-1">
+                SENDING...
+              </Text>
+            ) : (
+              <Text className="text-text-muted text-xs">
+                · {formatDistanceToNow(new Date(comment.created_at))}
+              </Text>
+            )}
           </View>
           <Pressable className="p-1 active:opacity-70">
             <MoreHorizontal size={16} color="#6B7280" />
