@@ -11,6 +11,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { queryClient } from "@/lib/query-client";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/lib/stores";
+import { usePushNotifications } from "@/lib/hooks";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -24,6 +25,9 @@ if (Platform.OS === "web") {
 
 export default function RootLayout() {
   const { setSession, setLoading } = useAuthStore();
+
+  // Initialize push notifications (registers token when authenticated)
+  usePushNotifications();
 
   useEffect(() => {
     // Single listener to sync Supabase Auth with Zustand Store
