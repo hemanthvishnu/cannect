@@ -1,13 +1,13 @@
 import { View, Text, Pressable, type ViewProps, Platform, Animated } from "react-native";
 import { Image } from "expo-image";
 import { Heart, MessageCircle, Repeat2, Share, MoreHorizontal, BadgeCheck, Globe2 } from "lucide-react-native";
-import { useRef } from "react";
+import React, { useRef, memo, useCallback } from "react";
 import * as Haptics from "expo-haptics";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { ASSET_RATIOS, BLURHASH_PLACEHOLDERS } from "@/lib/utils/assets";
 import { PostCarousel } from "./PostCarousel";
-import type { PostWithAuthor } from "@/lib/types/database";
+import type { PostWithAuthor, isFederatedPost, hasExternalMetadata } from "@/lib/types/database";
 
 // ---------------------------------------------------------------------------
 // Primitive Slots (Reusable Building Blocks)
@@ -46,9 +46,11 @@ interface ActionButtonProps {
   onPress?: () => void;
   hapticStyle?: "light" | "medium" | "success";
   fill?: boolean; // Fill icon when active (for hearts)
+  /** Accessibility label for screen readers */
+  accessibilityLabel?: string;
 }
 
-const ActionButton = ({ 
+const ActionButton = memo(function ActionButton({ 
   icon: Icon, 
   count, 
   active, 
@@ -56,10 +58,11 @@ const ActionButton = ({
   onPress,
   hapticStyle = "light",
   fill = false,
-}: ActionButtonProps) => {
+  accessibilityLabel,
+}: ActionButtonProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     // ✅ Diamond Standard: Haptic feedback
     if (Platform.OS !== "web") {
       if (hapticStyle === "success") {
@@ -87,13 +90,15 @@ const ActionButton = ({
     ]).start();
 
     onPress?.();
-  };
+  }, [onPress, hapticStyle, scaleAnim]);
 
   return (
     <Pressable 
       onPress={handlePress} 
       className="flex-row items-center gap-1.5 p-1 -ml-2 active:opacity-70"
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active }}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <Icon 
@@ -110,7 +115,7 @@ const ActionButton = ({
       )}
     </Pressable>
   );
-};
+});
 
 // ---------------------------------------------------------------------------
 // Main SocialPost Component
@@ -130,7 +135,7 @@ interface SocialPostProps {
   showThreadContext?: boolean;
 }
 
-export function SocialPost({ 
+export const SocialPost = memo(function SocialPost({ 
   post, 
   onLike, 
   onReply, 
@@ -146,24 +151,27 @@ export function SocialPost({
   const hasValidQuotedPost = post.quoted_post && post.quoted_post.id && post.quoted_post.content;
   
   // =====================================================
-  // INTERACTION CAPTURE LOGIC
+  // INTERACTION CAPTURE LOGIC (Type-safe)
   // =====================================================
   
   // 1. Live Global = Data fetched directly from Bluesky API (Read-only except repost)
-  const isLiveGlobal = (post as any).is_federated === true;
+  const isLiveGlobal = 'is_federated' in post && post.is_federated === true;
   
   // 2. Cannect Repost of Global = Data from Supabase referencing Bluesky (FULLY INTERACTIVE!)
   //    These have a real post.id in our database, so likes/comments work
-  const isCannectRepostOfGlobal = !!(post as any).external_id && (post as any).external_metadata;
+  const isCannectRepostOfGlobal = 'external_id' in post && 'external_metadata' in post && !!post.external_metadata;
   const externalData = isCannectRepostOfGlobal ? (post as any).external_metadata : null;
+  
+  // Store type for later use (avoids TypeScript narrowing issues)
+  const postType = post.type;
   
   // Handle Simple Repost: Only show repost UI when type is explicitly 'repost'
   // Quote posts (type='quote') have is_repost=true but should NOT show the "reposted" banner
   const isSimpleRepost = post.type === 'repost' && (hasValidQuotedPost || isCannectRepostOfGlobal);
   
   // For external reposts, construct a virtual quoted_post from the metadata
-  const virtualQuotedPost = isCannectRepostOfGlobal ? {
-    id: (post as any).external_id,
+  const virtualQuotedPost = isCannectRepostOfGlobal && externalData ? {
+    id: 'external_id' in post ? post.external_id : undefined,
     content: externalData?.content,
     created_at: externalData?.created_at,
     media_urls: externalData?.media_urls,
@@ -173,7 +181,9 @@ export function SocialPost({
   
   // If it's a simple repost, we effectively "swap" the post to be the quoted one,
   // but keep the "reposted by" context.
-  const displayPost = isSimpleRepost 
+  // Note: displayPost can be the original post, quoted_post, or a virtual object,
+  // so we use `any` here for flexibility with the complex union types
+  const displayPost: any = isSimpleRepost 
     ? (virtualQuotedPost || post.quoted_post) 
     : post;
   const reposter = isSimpleRepost ? post.author : null;
@@ -206,7 +216,7 @@ export function SocialPost({
     if (isSimpleRepost) return null;
     
     // Shadow Repost of external content (Bluesky snapshot)
-    if (isCannectRepostOfGlobal && externalData && post.type === 'quote') {
+    if (isCannectRepostOfGlobal && externalData && postType === 'quote') {
       return (
         <QuoteContainer onPress={() => {}}>
           <View className="p-3 gap-2">
@@ -319,12 +329,12 @@ export function SocialPost({
         )}
 
         {/* ✅ Gold Standard: Thread Context - "Replying to @username" */}
-        {showThreadContext && displayPost?.is_reply && (displayPost as any)?.parent_post?.author?.username && (
+        {showThreadContext && displayPost?.is_reply && displayPost?.parent_post?.author?.username && (
           <View className="flex-row items-center mb-1 ml-[52px]">
             <Text className="text-xs text-text-muted">
               Replying to{" "}
               <Text className="text-primary font-medium">
-                @{(displayPost as any).parent_post.author.username}
+                @{displayPost.parent_post.author.username}
               </Text>
             </Text>
           </View>
@@ -332,7 +342,12 @@ export function SocialPost({
 
         <PostHeader>
           {/* Avatar */}
-          <Pressable onPress={onProfilePress} className="active:opacity-80">
+          <Pressable 
+            onPress={onProfilePress} 
+            className="active:opacity-80"
+            accessibilityRole="button"
+            accessibilityLabel={`View ${displayPost?.author?.display_name || displayPost?.author?.username || 'user'}'s profile`}
+          >
             <Image
               source={{ uri: avatarUrl }}
               style={{ width: 40, height: 40, borderRadius: 20 }}
@@ -400,14 +415,16 @@ export function SocialPost({
             icon={MessageCircle} 
             count={isCannectRepostOfGlobal ? post.comments_count : displayPost?.comments_count} 
             onPress={interactionsDisabled ? undefined : onReply}
+            accessibilityLabel={`Reply. ${isCannectRepostOfGlobal ? post.comments_count : displayPost?.comments_count || 0} replies`}
           />
           <ActionButton 
             icon={Repeat2} 
             count={isCannectRepostOfGlobal ? post.reposts_count : displayPost?.reposts_count} 
-            active={(post as any).is_reposted_by_me === true} 
+            active={post.is_reposted_by_me === true} 
             activeColor="#10B981"
             onPress={onRepost} // Always enabled - allows shadow reposting
             hapticStyle="medium"
+            accessibilityLabel={`${post.is_reposted_by_me ? 'Undo repost' : 'Repost'}. ${isCannectRepostOfGlobal ? post.reposts_count : displayPost?.reposts_count || 0} reposts`}
           />
           <ActionButton 
             icon={Heart} 
@@ -417,16 +434,28 @@ export function SocialPost({
             onPress={interactionsDisabled ? undefined : onLike}
             hapticStyle="light"
             fill={true}
+            accessibilityLabel={`${(isCannectRepostOfGlobal ? post.is_liked : displayPost?.is_liked) ? 'Unlike' : 'Like'}. ${isCannectRepostOfGlobal ? post.likes_count : displayPost?.likes_count || 0} likes`}
           />
           <ActionButton 
             icon={Share} 
             onPress={onShare}
+            accessibilityLabel="Share post"
           />
         </PostFooter>
       </PostRoot>
     </Pressable>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo - only re-render when meaningful data changes
+  return (
+    prevProps.post.id === nextProps.post.id &&
+    prevProps.post.is_liked === nextProps.post.is_liked &&
+    prevProps.post.is_reposted_by_me === nextProps.post.is_reposted_by_me &&
+    prevProps.post.likes_count === nextProps.post.likes_count &&
+    prevProps.post.comments_count === nextProps.post.comments_count &&
+    prevProps.post.reposts_count === nextProps.post.reposts_count
+  );
+});
 
 // Export primitives for custom layouts
 export { PostRoot, PostHeader, PostContent, PostFooter, ActionButton };

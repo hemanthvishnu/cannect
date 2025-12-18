@@ -189,12 +189,75 @@ export type Like = Database["public"]["Tables"]["likes"]["Row"];
 export type Follow = Database["public"]["Tables"]["follows"]["Row"];
 export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 
+// =====================================================
 // Extended types with relations
-export type PostWithAuthor = Post & {
+// =====================================================
+
+/** Metadata for externally sourced (federated) content */
+export interface ExternalMetadata {
+  content?: string;
+  author?: {
+    id?: string;
+    username?: string;
+    display_name?: string;
+    avatar_url?: string;
+    handle?: string;
+  };
+  media_urls?: string[];
+  created_at?: string;
+  likes_count?: number;
+  reposts_count?: number;
+  comments_count?: number;
+}
+
+/** Parent post context for thread display */
+export interface ParentPostContext {
+  author?: {
+    username?: string;
+    display_name?: string;
+  };
+}
+
+/** Base post with author relation */
+export interface BasePostWithAuthor extends Post {
   author: Profile;
   is_liked?: boolean;
-  quoted_post?: (Post & { author: Profile }) | null;
-};
+  is_reposted_by_me?: boolean;
+  quoted_post?: (Post & { 
+    author: Profile;
+    quoted_post_id?: string | null;
+  }) | null;
+  parent_post?: ParentPostContext | null;
+}
+
+/** Local Cannect post (native content) */
+export interface LocalPost extends BasePostWithAuthor {
+  is_federated?: false;
+  external_id?: undefined;
+  external_source?: undefined;
+  external_metadata?: undefined;
+}
+
+/** Federated post from external source (e.g., Bluesky) */
+export interface FederatedPost extends BasePostWithAuthor {
+  is_federated: true;
+  external_id: string;
+  external_source: "bluesky" | string;
+  external_metadata: ExternalMetadata;
+}
+
+/** Discriminated union for all post types */
+export type PostWithAuthor = LocalPost | FederatedPost;
+
+/** Type guard for federated posts */
+export function isFederatedPost(post: PostWithAuthor): post is FederatedPost {
+  return 'is_federated' in post && post.is_federated === true;
+}
+
+/** Type guard for posts with external metadata (shadow reposts) */
+export function hasExternalMetadata(post: PostWithAuthor): post is FederatedPost {
+  return 'external_id' in post && 'external_metadata' in post && !!post.external_metadata;
+}
 
 export type NotificationWithActor = Notification & {
   actor: Profile;
