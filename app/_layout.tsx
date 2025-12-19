@@ -1,7 +1,7 @@
 import "../global.css";
 
-import { useEffect } from "react";
-import { LogBox, Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { LogBox, Platform, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -29,8 +29,16 @@ if (Platform.OS === "web") {
 
 // Inner component that uses hooks requiring QueryClient
 function AppContent() {
+  // 💎 Hydration Gate - Prevent SSR/client mismatch on web
+  const [isMounted, setIsMounted] = useState(false);
+
   // Initialize push notifications (registers token when authenticated)
   usePushNotifications();
+
+  // 💎 Set mounted after first render to gate hydration
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // 💎 bfcache handling - Invalidate stale queries when page restored from back/forward cache
   useEffect(() => {
@@ -73,6 +81,13 @@ function AppContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
+
+  // 💎 Gatekeeper: Skip hydration comparison by returning null during SSR
+  if (Platform.OS === 'web' && !isMounted) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />
+    );
+  }
 
   return (
     <SafeAreaProvider>
