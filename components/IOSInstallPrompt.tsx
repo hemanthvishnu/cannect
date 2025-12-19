@@ -30,6 +30,8 @@ const SHOW_DELAY = 5000; // Show after 5 seconds on page
  * - Animated arrow pointing to Safari's share button
  */
 export function IOSInstallPrompt() {
+  // 💎 Prevent hydration mismatch - don't render on SSR
+  const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
   
   // Bounce animation for the arrow
@@ -39,10 +41,16 @@ export function IOSInstallPrompt() {
     transform: [{ translateY: bounceY.value }],
   }));
 
+  // 💎 Mount check for hydration safety
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   useEffect(() => {
     // Only show on iOS Safari when not installed
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined') return;
+    if (!isMounted) return;
     if (!isIOSSafari()) return;
     if (isInstalledPWA()) return;
 
@@ -78,7 +86,7 @@ export function IOSInstallPrompt() {
     };
 
     checkAndShow();
-  }, [bounceY]);
+  }, [bounceY, isMounted]);
 
   const handleDismiss = useCallback(async () => {
     setShow(false);
@@ -89,6 +97,8 @@ export function IOSInstallPrompt() {
     }
   }, []);
 
+  // Don't render during SSR
+  if (!isMounted) return null;
   if (!show) return null;
 
   return (

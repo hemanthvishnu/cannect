@@ -25,6 +25,8 @@ interface PWAUpdaterProps {
  * - Graceful degradation
  */
 export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
+  // 💎 Prevent hydration mismatch - don't render on SSR
+  const [isMounted, setIsMounted] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -40,6 +42,11 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
+  // 💎 Mount check for hydration safety
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // =====================================================
   // Setup Service Worker Listeners
   // =====================================================
@@ -47,6 +54,7 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
+    if (!isMounted) return;
 
     const setupServiceWorker = async () => {
       try {
@@ -217,8 +225,9 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     sessionStorage.setItem('pwa_update_dismissed', 'true');
   }, []);
 
-  // Don't render on non-web platforms
+  // Don't render on non-web platforms or during SSR
   if (Platform.OS !== 'web') return null;
+  if (!isMounted) return null;
   if (!showToast) return null;
 
   const isCritical = updateType === 'critical';
