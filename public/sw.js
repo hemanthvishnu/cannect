@@ -30,8 +30,8 @@ const CACHE_BYPASS_PATTERNS = [
   'customer-',
   '/api/',
   '.m3u8',        // HLS video manifests
-  '.ts',          // HLS video segments (TypeScript files are fine, these are in /src)
   'blob:',
+  // Note: HLS .ts segments are handled natively by browser, no need to bypass
 ];
 
 // =====================================================
