@@ -1,10 +1,10 @@
 // =====================================================
-// Cannect Service Worker v3.0 - ABSOLUTE GOLD STANDARD
+// Cannect Service Worker v3.1 - DIAMOND POLISH
 // Atomic Versioning + Cache Purging + Network Resilience
 // =====================================================
 
 // 💎 ATOMIC VERSIONING - INCREMENT THIS ON EVERY DEPLOY
-const CACHE_VERSION = 'v1.0.5';
+const CACHE_VERSION = 'v1.1.0';
 const CACHE_NAME = `cannect-atomic-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 

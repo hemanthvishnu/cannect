@@ -1,4 +1,4 @@
-import { View, Text, RefreshControl, ActivityIndicator, Alert, Platform, ActionSheetIOS, Share, Pressable } from "react-native";
+import { View, Text, RefreshControl, Alert, Platform, ActionSheetIOS, Share, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
@@ -12,6 +12,8 @@ import { SocialPost } from "@/components/social";
 import { EmptyFeedState } from "@/components/social/EmptyFeedState";
 import { DiscoveryModal, useDiscoveryModal } from "@/components/social/DiscoveryModal";
 import { getFederatedPosts } from "@/lib/services/bluesky";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { FeedSkeleton } from "@/components/Skeleton";
 import type { PostWithAuthor } from "@/lib/types/database";
 
 type FeedTab = "for-you" | "following" | "federated";
@@ -312,10 +314,11 @@ export default function FeedScreen() {
         ))}
       </View>
 
+      {/* Offline Banner - shows when network is unavailable */}
+      <OfflineBanner />
+
       {isCurrentLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#10B981" />
-        </View>
+        <FeedSkeleton />
       ) : (
         <View style={{ flex: 1, minHeight: 2 }}>
           <FlashList

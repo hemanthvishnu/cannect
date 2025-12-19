@@ -12,8 +12,10 @@ import { queryClient } from "@/lib/query-client";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/lib/stores";
 import { usePushNotifications } from "@/lib/hooks";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PWAUpdater } from "@/components/PWAUpdater";
 import { IOSInstallPrompt } from "@/components/IOSInstallPrompt";
+import { WhatsNewToast } from "@/components/WhatsNewToast";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -46,6 +48,32 @@ function AppContent() {
     return () => window.removeEventListener("pageshow", handlePageShow);
   }, []);
 
+  // 💎 Visibility change handler - Refresh data when app wakes from background
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof document === "undefined") return;
+
+    let lastHidden = 0;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        lastHidden = Date.now();
+      } else if (document.visibilityState === "visible") {
+        // If hidden for more than 5 minutes, refresh data
+        const hiddenDuration = Date.now() - lastHidden;
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        if (lastHidden > 0 && hiddenDuration > fiveMinutes) {
+          console.log('[App] Woke from background after 5+ mins, refreshing data');
+          queryClient.invalidateQueries();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
@@ -62,6 +90,9 @@ function AppContent() {
       
       {/* 💎 iOS Install Prompt - Guides Safari users to install */}
       <IOSInstallPrompt />
+      
+      {/* 💎 What's New Toast - Shows after app updates */}
+      <WhatsNewToast />
     </SafeAreaProvider>
   );
 }
@@ -84,10 +115,12 @@ export default function RootLayout() {
   }, [setSession]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <AppContent />
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <AppContent />
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
