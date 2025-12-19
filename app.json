@@ -31,7 +31,15 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Cannect",
+      "shortName": "Cannect",
+      "description": "The cannabis social network",
+      "backgroundColor": "#0A0A0A",
+      "themeColor": "#10B981",
+      "display": "standalone",
+      "orientation": "portrait",
+      "lang": "en"
     },
     "plugins": [
       "expo-router",

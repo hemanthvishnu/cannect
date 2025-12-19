@@ -4,6 +4,7 @@ import { Heart, MessageCircle, Repeat2, MoreHorizontal, ChevronRight } from "luc
 import { useRouter } from "expo-router";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "@/lib/utils/date";
+import { HydrationSafeText } from "@/components/ui/HydrationSafeText";
 import { BLURHASH_PLACEHOLDERS } from "@/lib/utils/assets";
 import { PostCarousel } from "./PostCarousel";
 
@@ -121,9 +122,9 @@ export function ThreadComment({
             ) : (
               <Text className="text-text-muted text-xs">
                 ·{" "}
-                <Text suppressHydrationWarning>
+                <HydrationSafeText fallback="...">
                   {formatDistanceToNow(new Date(comment.created_at))}
-                </Text>
+                </HydrationSafeText>
               </Text>
             )}
           </View>

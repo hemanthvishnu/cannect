@@ -9,8 +9,10 @@ import { ASSET_RATIOS, BLURHASH_PLACEHOLDERS } from "@/lib/utils/assets";
 import { PostCarousel } from "./PostCarousel";
 import { PostShareCard } from "./PostShareCard";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
+import { HydrationSafeText } from "@/components/ui/HydrationSafeText";
 import { useShareSnapshot } from "@/lib/hooks/use-share-snapshot";
-import type { PostWithAuthor, isFederatedPost, hasExternalMetadata } from "@/lib/types/database";
+import type { PostWithAuthor } from "@/lib/types/database";
+import { isFederatedPost, hasExternalMetadata } from "@/lib/types/database";
 
 // ---------------------------------------------------------------------------
 // Primitive Slots (Reusable Building Blocks)
@@ -177,12 +179,12 @@ export const SocialPost = memo(function SocialPost({
   // =====================================================
   
   // 1. Live Global = Data fetched directly from Bluesky API (Read-only except repost)
-  const isLiveGlobal = 'is_federated' in post && post.is_federated === true;
+  const isLiveGlobal = isFederatedPost(post);
   
   // 2. Cannect Repost of Global = Data from Supabase referencing Bluesky (FULLY INTERACTIVE!)
   //    These have a real post.id in our database, so likes/comments work
-  const isCannectRepostOfGlobal = 'external_id' in post && 'external_metadata' in post && !!post.external_metadata;
-  const externalData = isCannectRepostOfGlobal ? (post as any).external_metadata : null;
+  const isCannectRepostOfGlobal = hasExternalMetadata(post);
+  const externalData = isCannectRepostOfGlobal ? post.external_metadata : null;
   
   // Store type for later use (avoids TypeScript narrowing issues)
   const postType = post.type;
@@ -216,7 +218,7 @@ export const SocialPost = memo(function SocialPost({
     `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=10B981&color=fff`;
   
   // Check if the displayed content is from an external source (for badge display)
-  const displayedIsFederated = isLiveGlobal || (displayPost as any)?.is_federated === true;
+  const displayedIsFederated = isLiveGlobal || isFederatedPost(displayPost);
   
   // =====================================================
   // INTERACTION RULES:
@@ -413,9 +415,9 @@ export const SocialPost = memo(function SocialPost({
               )}
               <Text className="text-text-muted text-sm flex-shrink" numberOfLines={1}>
                 @{displayPost?.author?.username || "user"} ·{" "}
-                <Text suppressHydrationWarning>
+                <HydrationSafeText fallback="...">
                   {formatDistanceToNow(new Date(displayPost?.created_at || new Date()))}
-                </Text>
+                </HydrationSafeText>
               </Text>
             </View>
             <Pressable className="p-1 active:opacity-70" onPress={onMore}>
