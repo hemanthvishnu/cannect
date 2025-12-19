@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -20,6 +20,8 @@ interface SkeletonProps {
 
 /**
  * Skeleton - Base skeleton component with shimmer animation
+ * 
+ * Uses a mounted check to prevent hydration mismatch on web.
  */
 export function Skeleton({ 
   width = '100%', 
@@ -27,19 +29,44 @@ export function Skeleton({
   borderRadius = 8,
   style,
 }: SkeletonProps) {
-  const opacity = useSharedValue(0.3);
+  // Prevent hydration mismatch on web - start with static, animate after mount
+  const [isMounted, setIsMounted] = useState(Platform.OS !== 'web');
+  const opacity = useSharedValue(0.5);
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
     opacity.value = withRepeat(
       withTiming(0.7, { duration: 800 }),
       -1,
       true
     );
-  }, []);
+  }, [isMounted]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+    opacity: isMounted ? opacity.value : 0.5,
   }));
+
+  // On web before mount, render static version to match SSR
+  if (Platform.OS === 'web' && !isMounted) {
+    return (
+      <View
+        style={[
+          {
+            width,
+            height,
+            borderRadius,
+            backgroundColor: '#27272A',
+            opacity: 0.5,
+          },
+          style,
+        ]}
+      />
+    );
+  }
 
   return (
     <Animated.View
