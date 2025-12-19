@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Animated, Platform, type ViewProps } from "react-native";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
  * 
  * A shimmering placeholder component for loading states.
  * Provides visual feedback that content is loading.
+ * 
+ * Uses isMounted check to prevent hydration mismatch on web.
  */
 
 interface SkeletonProps extends ViewProps {
@@ -29,9 +31,17 @@ export function Skeleton({
   style,
   ...props 
 }: SkeletonProps) {
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  // Prevent hydration mismatch on web - start with static, animate after mount
+  const [isMounted, setIsMounted] = useState(Platform.OS !== 'web');
+  const shimmerAnim = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmerAnim, {
@@ -48,7 +58,7 @@ export function Skeleton({
     );
     animation.start();
     return () => animation.stop();
-  }, [shimmerAnim]);
+  }, [isMounted, shimmerAnim]);
 
   const opacity = shimmerAnim.interpolate({
     inputRange: [0, 1],
@@ -66,6 +76,25 @@ export function Skeleton({
       default: return 8;
     }
   };
+
+  // On web before mount, render static version to match SSR
+  if (Platform.OS === 'web' && !isMounted) {
+    return (
+      <View
+        className={cn("bg-muted", className)}
+        style={[
+          {
+            width: width as any,
+            height: height as any,
+            borderRadius: getBorderRadius(),
+            opacity: 0.5,
+          },
+          style,
+        ]}
+        {...props}
+      />
+    );
+  }
 
   return (
     <Animated.View
