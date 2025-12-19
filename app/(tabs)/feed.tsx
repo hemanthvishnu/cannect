@@ -1,4 +1,4 @@
-import { View, Text, RefreshControl, Alert, Platform, ActionSheetIOS, Share, Pressable } from "react-native";
+import { View, Text, RefreshControl, ActivityIndicator, Alert, Platform, ActionSheetIOS, Share, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
