@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { View, Pressable, Text, ActivityIndicator, Platform, StyleSheet } from 'react-native';
+import { View, Pressable, Text, ActivityIndicator, Platform, StyleSheet, Image as RNImage } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { Play, Pause, Volume2, VolumeX, Maximize2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -36,6 +36,33 @@ export function VideoPlayer({
   const [hasError, setHasError] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isMuted, setIsMuted] = useState(initialMuted);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // ✅ Fix hydration mismatch - Reanimated hooks cause SSR issues
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Return static fallback during SSR to prevent hydration mismatch
+  if (Platform.OS === 'web' && !isMounted) {
+    return (
+      <View 
+        className="relative rounded-xl overflow-hidden bg-black items-center justify-center"
+        style={{ aspectRatio }}
+      >
+        {thumbnailUrl && (
+          <RNImage
+            source={{ uri: thumbnailUrl }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+        )}
+        <View className="absolute inset-0 items-center justify-center bg-black/40">
+          <Play size={48} color="#FFFFFF" />
+        </View>
+      </View>
+    );
+  }
 
   // Derived state
   const isPlaying = status?.isLoaded && status.isPlaying;

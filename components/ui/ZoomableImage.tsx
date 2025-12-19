@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, Dimensions, View, Text } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Dimensions, View, Text, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -23,6 +23,25 @@ interface ZoomableImageProps {
 
 export function ZoomableImage({ uri, onSwipeDown }: ZoomableImageProps) {
   const [hasError, setHasError] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // ✅ Fix hydration mismatch - Reanimated hooks cause SSR issues
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Return static fallback during SSR to prevent hydration mismatch
+  if (Platform.OS === 'web' && !isMounted) {
+    return (
+      <View style={styles.container}>
+        <Image
+          source={uri}
+          style={styles.image}
+          contentFit="contain"
+        />
+      </View>
+    );
+  }
   // Scale values
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
