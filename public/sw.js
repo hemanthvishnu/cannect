@@ -1,17 +1,17 @@
 // =====================================================
-// Cannect Service Worker v2.1
-// Handles: Push Notifications + Cache Management + Updates
+// Cannect Service Worker v3.0 - ABSOLUTE GOLD STANDARD
+// Atomic Versioning + Cache Purging + Network Resilience
 // =====================================================
 
-// Cache versioning - INCREMENT THIS ON EVERY DEPLOY
-const CACHE_VERSION = 'v1.0.1';
-const CACHE_NAME = `cannect-${CACHE_VERSION}`;
+// 💎 ATOMIC VERSIONING - INCREMENT THIS ON EVERY DEPLOY
+const CACHE_VERSION = 'v1.0.5';
+const CACHE_NAME = `cannect-atomic-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
-// 💎 Versions that require immediate update (breaking changes)
+// 💎 Versions that require immediate force update (breaking changes)
 const FORCE_UPDATE_VERSIONS = [];
 
-// Assets to precache (shell of the app)
+// Core assets required for the app shell
 const PRECACHE_ASSETS = [
   OFFLINE_URL,
   '/icon-192.png',
@@ -19,172 +19,235 @@ const PRECACHE_ASSETS = [
   '/badge-72.png',
 ];
 
+// 💎 Domains to NEVER cache (APIs, external media)
+const CACHE_BYPASS_PATTERNS = [
+  '/functions/',
+  'supabase.co',
+  '/rest/',
+  'cloudflare',
+  'imagedelivery.net',
+  'videodelivery.net',
+  'customer-',
+  '/api/',
+  '.m3u8',        // HLS video manifests
+  '.ts',          // HLS video segments (TypeScript files are fine, these are in /src)
+  'blob:',
+];
+
 // =====================================================
-// Install Event - Precache Core Assets (with error handling)
+// Install Event - Build Atomic Cache
 // =====================================================
 self.addEventListener('install', (event) => {
   console.log(`[SW] Installing version ${CACHE_VERSION}`);
   
   event.waitUntil(
     (async () => {
-      // 💎 Fix 6: Check storage quota before installing
-      if (navigator.storage && navigator.storage.estimate) {
-        try {
-          const { quota, usage } = await navigator.storage.estimate();
-          const availableMB = ((quota - usage) / 1024 / 1024).toFixed(2);
-          console.log(`[SW] Available storage: ${availableMB}MB`);
-          
-          if (quota - usage < 5 * 1024 * 1024) {
-            console.warn('[SW] Low storage - precaching may fail');
-          }
-        } catch (e) {
-          console.warn('[SW] Could not estimate storage:', e);
-        }
-      }
-      
-      const cache = await caches.open(CACHE_NAME);
-      console.log('[SW] Precaching app shell');
-      
-      // 💎 Fix 2: Cache assets individually to handle failures gracefully
-      const results = await Promise.allSettled(
-        PRECACHE_ASSETS.map(async (url) => {
-          try {
-            const response = await fetch(url, { cache: 'reload' });
-            if (response.ok) {
-              await cache.put(url, response);
-              return { url, success: true };
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        console.log('[SW] Pre-caching atomic assets');
+        
+        // 💎 Cache assets individually for graceful degradation
+        const results = await Promise.allSettled(
+          PRECACHE_ASSETS.map(async (url) => {
+            try {
+              // Force network fetch to avoid caching stale versions
+              const response = await fetch(url, { cache: 'reload' });
+              if (response.ok) {
+                await cache.put(url, response);
+                console.log(`[SW] Cached: ${url}`);
+                return { url, success: true };
+              }
+              console.warn(`[SW] Failed to fetch ${url}: ${response.status}`);
+              return { url, success: false };
+            } catch (error) {
+              console.warn(`[SW] Failed to fetch ${url}:`, error.message);
+              return { url, success: false };
             }
-            console.warn(`[SW] Failed to fetch ${url}: ${response.status}`);
-            return { url, success: false };
-          } catch (error) {
-            console.warn(`[SW] Failed to fetch ${url}:`, error);
-            return { url, success: false };
-          }
-        })
-      );
-      
-      const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
-      console.log(`[SW] Precached ${successCount}/${PRECACHE_ASSETS.length} assets`);
+          })
+        );
+        
+        const successCount = results.filter(r => 
+          r.status === 'fulfilled' && r.value?.success
+        ).length;
+        console.log(`[SW] Pre-cached ${successCount}/${PRECACHE_ASSETS.length} assets`);
+        
+      } catch (error) {
+        console.error('[SW] Pre-cache failed:', error);
+      }
     })()
   );
   
-  // Don't call skipWaiting here - we want to control this from the UI
-  // The PWAUpdater component will send SKIP_WAITING message when user clicks "Update"
+  // 💎 Don't skipWaiting here - let PWAUpdater control this
+  // This prevents the "surprise reload" problem
 });
 
 // =====================================================
-// Activate Event - Clean Old Caches
+// Activate Event - ATOMIC SLEDGEHAMMER CLEANUP
 // =====================================================
 self.addEventListener('activate', (event) => {
   console.log(`[SW] Activating version ${CACHE_VERSION}`);
   
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name.startsWith('cannect-') && name !== CACHE_NAME)
-          .map((name) => {
-            console.log(`[SW] Deleting old cache: ${name}`);
-            return caches.delete(name);
-          })
-      );
-    }).then(() => {
-      console.log('[SW] Old caches cleared, claiming clients');
-      return self.clients.claim();
-    })
+    (async () => {
+      // 💎 ATOMIC PURGE: Delete ALL caches that aren't current version
+      const cacheNames = await caches.keys();
+      const deletionPromises = cacheNames
+        .filter((name) => {
+          // Delete any cache that:
+          // 1. Starts with 'cannect-' but isn't current version
+          // 2. Is an old cache from previous naming schemes
+          const isOldCannectCache = name.startsWith('cannect-') && name !== CACHE_NAME;
+          const isLegacyCache = name.includes('workbox') || name.includes('runtime');
+          return isOldCannectCache || isLegacyCache;
+        })
+        .map((name) => {
+          console.log(`[SW] 🔥 Atomic Purge: ${name}`);
+          return caches.delete(name);
+        });
+      
+      await Promise.all(deletionPromises);
+      console.log(`[SW] Purged ${deletionPromises.length} old caches`);
+      
+      // 💎 Take control of ALL open tabs immediately
+      await self.clients.claim();
+      console.log('[SW] Now controlling all clients');
+      
+      // 💎 Notify all clients that a new version is active
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((client) => {
+        client.postMessage({
+          type: 'SW_ACTIVATED',
+          version: CACHE_VERSION,
+        });
+      });
+    })()
   );
 });
 
 // =====================================================
-// Fetch Event - Network First, Cache Fallback
+// Fetch Event - Smart Caching Strategy
 // =====================================================
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  const url = request.url;
   
   // Skip non-GET requests
   if (request.method !== 'GET') return;
   
   // Skip non-http(s) requests
-  if (!request.url.startsWith('http')) return;
+  if (!url.startsWith('http')) return;
   
-  // 💎 Skip API requests AND external media (always fetch fresh)
-  if (request.url.includes('/functions/') || 
-      request.url.includes('supabase.co') ||
-      request.url.includes('/rest/') ||
-      request.url.includes('cloudflare') ||
-      request.url.includes('imagedelivery.net') ||   // 💎 Cloudflare Images
-      request.url.includes('videodelivery.net') ||   // 💎 Cloudflare Stream
-      request.url.includes('customer-') ||           // 💎 Cloudflare customer subdomain
-      request.url.includes('/api/')) {
-    return;
+  // 💎 BYPASS: Never cache these patterns
+  const shouldBypass = CACHE_BYPASS_PATTERNS.some(pattern => url.includes(pattern));
+  if (shouldBypass) {
+    return; // Let browser handle normally
   }
   
-  // For navigation requests (HTML pages) - Network first with offline fallback
+  // 💎 NAVIGATION: Network-first with offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache successful HTML responses
-          if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
-            });
+      (async () => {
+        try {
+          // Always try network first for navigation
+          const networkResponse = await fetch(request);
+          
+          // Cache successful responses for offline fallback
+          if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
           }
-          return response;
-        })
-        .catch(() => {
-          // Offline - return cached version or offline page
-          return caches.match(request).then((cached) => {
-            return cached || caches.match(OFFLINE_URL);
+          
+          return networkResponse;
+        } catch (error) {
+          // Network failed - try cache, then offline page
+          console.log('[SW] Navigation failed, trying cache');
+          const cachedResponse = await caches.match(request);
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          
+          // Last resort: offline page
+          const offlineResponse = await caches.match(OFFLINE_URL);
+          return offlineResponse || new Response('Offline', { 
+            status: 503,
+            statusText: 'Service Unavailable' 
           });
-        })
+        }
+      })()
     );
     return;
   }
   
-  // For static assets - Stale-while-revalidate strategy
+  // 💎 STATIC ASSETS: Stale-while-revalidate with network preference
   event.respondWith(
-    caches.match(request).then((cached) => {
-      // Return cached immediately, but update in background
-      const fetchPromise = fetch(request).then((response) => {
-        if (response.ok) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
-        }
-        return response;
-      }).catch(() => cached);
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cachedResponse = await cache.match(request);
       
-      return cached || fetchPromise;
-    })
+      // Start network fetch immediately
+      const networkPromise = fetch(request)
+        .then((response) => {
+          // Only cache successful, same-origin responses
+          if (response.ok && response.type === 'basic') {
+            cache.put(request, response.clone());
+          }
+          return response;
+        })
+        .catch(() => null);
+      
+      // Return cached immediately if available, but update in background
+      if (cachedResponse) {
+        // Fire-and-forget background update
+        networkPromise.catch(() => {});
+        return cachedResponse;
+      }
+      
+      // No cache - wait for network
+      const networkResponse = await networkPromise;
+      if (networkResponse) {
+        return networkResponse;
+      }
+      
+      // Both failed
+      return new Response('Resource unavailable', { status: 404 });
+    })()
   );
 });
 
 // =====================================================
-// Message Event - Handle Skip Waiting & Version Query
+// Message Event - Update Control & Version Queries
 // =====================================================
 self.addEventListener('message', (event) => {
   console.log('[SW] Message received:', event.data);
   
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('[SW] Skip waiting triggered - activating new version');
-    self.skipWaiting();
-  }
+  const { type } = event.data || {};
   
-  if (event.data && event.data.type === 'GET_VERSION') {
-    event.ports[0].postMessage({ version: CACHE_VERSION });
-  }
-  
-  // 💎 Fix 5: Check if this version requires force update
-  if (event.data && event.data.type === 'CHECK_FORCE_UPDATE') {
-    const shouldForce = FORCE_UPDATE_VERSIONS.includes(CACHE_VERSION);
-    event.source.postMessage({ 
-      type: 'FORCE_UPDATE_RESULT', 
-      shouldForce,
-      version: CACHE_VERSION 
-    });
+  switch (type) {
+    case 'SKIP_WAITING':
+      console.log('[SW] Skip waiting triggered - activating immediately');
+      self.skipWaiting();
+      break;
+      
+    case 'GET_VERSION':
+      event.ports?.[0]?.postMessage({ version: CACHE_VERSION });
+      break;
+      
+    case 'CHECK_FORCE_UPDATE':
+      const shouldForce = FORCE_UPDATE_VERSIONS.includes(CACHE_VERSION);
+      event.source?.postMessage({ 
+        type: 'FORCE_UPDATE_RESULT', 
+        shouldForce,
+        version: CACHE_VERSION 
+      });
+      break;
+      
+    case 'CLEAR_CACHE':
+      // Emergency cache clear
+      caches.keys().then((names) => {
+        names.forEach((name) => caches.delete(name));
+        console.log('[SW] All caches cleared');
+      });
+      break;
   }
 });
 
@@ -192,7 +255,7 @@ self.addEventListener('message', (event) => {
 // Push Notification Handling
 // =====================================================
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push received:', event);
+  console.log('[SW] Push received');
   
   let data = { title: 'Cannect', body: 'New notification' };
   
@@ -227,7 +290,7 @@ self.addEventListener('push', (event) => {
 // Notification Click Handling
 // =====================================================
 self.addEventListener('notificationclick', (event) => {
-  console.log('[SW] Notification clicked:', event);
+  console.log('[SW] Notification clicked');
   
   event.notification.close();
 
@@ -238,7 +301,6 @@ self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data;
   let url = '/';
 
-  // Navigate based on notification type
   if (data?.type === 'follow' && data?.actorUsername) {
     url = `/user/${data.actorUsername}`;
   } else if (data?.postId) {
@@ -247,6 +309,7 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Try to focus existing window
       for (const client of clientList) {
         if ('focus' in client) {
           client.focus();
@@ -254,6 +317,7 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
+      // Open new window
       if (clients.openWindow) {
         return clients.openWindow(url);
       }
@@ -265,7 +329,7 @@ self.addEventListener('notificationclick', (event) => {
 // Notification Close Handling
 // =====================================================
 self.addEventListener('notificationclose', (event) => {
-  console.log('[SW] Notification closed:', event);
+  console.log('[SW] Notification closed');
 });
 
 console.log(`[SW] Service Worker loaded - Version ${CACHE_VERSION}`);

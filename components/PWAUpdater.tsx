@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { RefreshCw } from 'lucide-react-native';
+import { RefreshCw, AlertTriangle } from 'lucide-react-native';
 
 interface PWAUpdaterProps {
   /** Check for updates interval in milliseconds (default: 60000 = 1 minute) */
@@ -15,24 +15,24 @@ interface PWAUpdaterProps {
 }
 
 /**
- * PWAUpdater - Handles graceful Service Worker updates
+ * PWAUpdater - ABSOLUTE GOLD STANDARD Update Handler
  * 
- * Shows a toast when a new version is available, allowing users to update
- * without experiencing broken UI from cache/code mismatches.
- * 
- * Edge cases handled:
- * - Zombie tabs (old SW running in background tabs)
- * - Partial cache (new HTML, old CSS)
- * - Double reload problem
- * - First install (no toast shown)
+ * Handles:
+ * - Atomic cache updates (no Frankenstein state)
+ * - Zombie tab cleanup
+ * - Double reload prevention
+ * - Force update for breaking changes
+ * - Graceful degradation
  */
 export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
   const [showToast, setShowToast] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateType, setUpdateType] = useState<'normal' | 'critical'>('normal');
   
-  // 💎 Fix 3: Guard against infinite reload loops
-  const hasReloadedRef = useRef(false);
+  // 💎 Guards against reload loops and race conditions
+  const isRefreshingRef = useRef(false);
+  const hasShownToastRef = useRef(false);
   
   // Animation for the refresh icon
   const rotation = useSharedValue(0);
@@ -44,41 +44,58 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
   // Setup Service Worker Listeners
   // =====================================================
   useEffect(() => {
-    // Only run on web
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
 
     const setupServiceWorker = async () => {
       try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg) {
-          handleRegistration(reg);
+        // Get existing registration
+        let reg = await navigator.serviceWorker.getRegistration();
+        
+        // If no registration, register the SW
+        if (!reg) {
+          reg = await navigator.serviceWorker.register('/sw.js', {
+            scope: '/',
+          });
+          console.log('[PWAUpdater] Service Worker registered');
         }
+        
+        handleRegistration(reg);
       } catch (error) {
-        console.error('[PWAUpdater] Error getting registration:', error);
+        console.error('[PWAUpdater] Error:', error);
       }
     };
 
     setupServiceWorker();
 
-    // Listen for controller changes (new SW activated)
+    // 💎 THE CRITICAL FIX: controllerchange listener
+    // This fires ONLY when a new SW has taken control
     const handleControllerChange = () => {
-      // 💎 Fix 3: Guard against multiple reloads
-      if (hasReloadedRef.current) {
-        console.warn('[PWAUpdater] Reload already triggered, ignoring');
+      if (isRefreshingRef.current) {
+        console.log('[PWAUpdater] Reload already in progress, skipping');
         return;
       }
-      hasReloadedRef.current = true;
+      isRefreshingRef.current = true;
       
-      console.log('[PWAUpdater] Controller changed - reloading');
+      console.log('[PWAUpdater] New controller active - executing atomic reload');
       window.location.reload();
     };
 
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
+    // 💎 Listen for SW_ACTIVATED messages (for logging/analytics)
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_ACTIVATED') {
+        console.log(`[PWAUpdater] SW activated: ${event.data.version}`);
+      }
+    };
+    
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      navigator.serviceWorker.removeEventListener('message', handleMessage);
     };
   }, []);
 
@@ -89,6 +106,10 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     if (Platform.OS !== 'web') return;
     if (!registration) return;
 
+    // Check immediately on mount
+    registration.update().catch(console.error);
+
+    // Then check periodically
     const interval = setInterval(() => {
       console.log('[PWAUpdater] Checking for updates...');
       registration.update().catch(console.error);
@@ -106,29 +127,7 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     // Check if there's already a waiting worker
     if (reg.waiting) {
       console.log('[PWAUpdater] Update already waiting');
-      
-      // 💎 Fix 5: Check if this is a critical force update
-      const handleForceUpdateCheck = (event: MessageEvent) => {
-        if (event.data?.type === 'FORCE_UPDATE_RESULT') {
-          navigator.serviceWorker.removeEventListener('message', handleForceUpdateCheck);
-          
-          if (event.data.shouldForce) {
-            console.log('[PWAUpdater] Force update required for version:', event.data.version);
-            reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
-            // Will reload via controllerchange
-            return;
-          }
-          
-          // 💎 Fix 4: Don't show if already dismissed this session
-          const dismissed = sessionStorage.getItem('pwa_update_dismissed');
-          if (dismissed !== 'true') {
-            setShowToast(true);
-          }
-        }
-      };
-      
-      navigator.serviceWorker.addEventListener('message', handleForceUpdateCheck);
-      reg.waiting.postMessage({ type: 'CHECK_FORCE_UPDATE' });
+      checkForForceUpdate(reg.waiting);
       return;
     }
 
@@ -144,7 +143,7 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
           // Only show toast if there's an existing controller (not first install)
           if (navigator.serviceWorker.controller) {
             console.log('[PWAUpdater] New version ready');
-            setShowToast(true);
+            checkForForceUpdate(newWorker);
           }
         }
       };
@@ -153,6 +152,37 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
     };
 
     reg.addEventListener('updatefound', handleUpdateFound);
+  }, []);
+
+  // =====================================================
+  // Check for Force Update
+  // =====================================================
+  const checkForForceUpdate = useCallback((worker: ServiceWorker) => {
+    // Check if this is a critical update that should be forced
+    const channel = new MessageChannel();
+    
+    channel.port1.onmessage = (event) => {
+      if (event.data?.type === 'FORCE_UPDATE_RESULT') {
+        if (event.data.shouldForce) {
+          console.log('[PWAUpdater] CRITICAL UPDATE - forcing immediate update');
+          setUpdateType('critical');
+          // Immediately trigger update without user interaction
+          worker.postMessage({ type: 'SKIP_WAITING' });
+        } else {
+          // Normal update - show toast
+          if (!hasShownToastRef.current) {
+            // Check if user dismissed in this session
+            const dismissed = sessionStorage.getItem('pwa_update_dismissed');
+            if (dismissed !== 'true') {
+              setShowToast(true);
+              hasShownToastRef.current = true;
+            }
+          }
+        }
+      }
+    };
+    
+    worker.postMessage({ type: 'CHECK_FORCE_UPDATE' }, [channel.port2]);
   }, []);
 
   // =====================================================
@@ -169,6 +199,9 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
       stiffness: 100,
     });
 
+    // Clear the dismissal flag since user is actively updating
+    sessionStorage.removeItem('pwa_update_dismissed');
+
     // Tell the waiting worker to skip waiting and take control
     registration.waiting.postMessage({ type: 'SKIP_WAITING' });
 
@@ -176,13 +209,11 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
   }, [registration, rotation]);
 
   // =====================================================
-  // Dismiss Toast (user can update later)
+  // Dismiss Toast
   // =====================================================
   const handleDismiss = useCallback(() => {
     setShowToast(false);
-    
-    // 💎 Fix 4: Remember dismissal in this session so we don't nag
-    // But it will show again on next session/tab
+    // Remember dismissal in session so we don't nag
     sessionStorage.setItem('pwa_update_dismissed', 'true');
   }, []);
 
@@ -190,39 +221,56 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
   if (Platform.OS !== 'web') return null;
   if (!showToast) return null;
 
+  const isCritical = updateType === 'critical';
+
   return (
     <Animated.View
       entering={FadeInUp.springify().damping(15)}
       exiting={FadeOutDown.springify().damping(15)}
       style={styles.container}
     >
-      <View style={styles.toast}>
+      <View style={[styles.toast, isCritical && styles.toastCritical]}>
         {/* Icon */}
         <Animated.View style={animatedIconStyle}>
-          <RefreshCw size={24} color="#10B981" />
+          {isCritical ? (
+            <AlertTriangle size={24} color="#EF4444" />
+          ) : (
+            <RefreshCw size={24} color="#10B981" />
+          )}
         </Animated.View>
 
         {/* Text */}
         <View style={styles.textContainer}>
-          <Text style={styles.title}>Update Available</Text>
+          <Text style={styles.title}>
+            {isCritical ? 'Critical Update Required' : 'Update Available'}
+          </Text>
           <Text style={styles.subtitle}>
-            Tap to refresh and get the latest features
+            {isCritical 
+              ? 'Please update now to continue using Cannect'
+              : 'Tap to refresh and get the latest features'
+            }
           </Text>
         </View>
 
         {/* Buttons */}
         <View style={styles.buttonContainer}>
-          <Pressable
-            onPress={handleDismiss}
-            style={styles.laterButton}
-          >
-            <Text style={styles.laterText}>Later</Text>
-          </Pressable>
+          {!isCritical && (
+            <Pressable
+              onPress={handleDismiss}
+              style={styles.laterButton}
+            >
+              <Text style={styles.laterText}>Later</Text>
+            </Pressable>
+          )}
           
           <Pressable
             onPress={handleUpdate}
             disabled={isUpdating}
-            style={[styles.updateButton, isUpdating && styles.updateButtonDisabled]}
+            style={[
+              styles.updateButton, 
+              isUpdating && styles.updateButtonDisabled,
+              isCritical && styles.updateButtonCritical
+            ]}
           >
             <Text style={styles.updateText}>
               {isUpdating ? 'Updating...' : 'Update'}
@@ -237,7 +285,7 @@ export function PWAUpdater({ checkInterval = 60000 }: PWAUpdaterProps) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 100, // Above tab bar
+    bottom: 100,
     left: 16,
     right: 16,
     zIndex: 9999,
@@ -255,6 +303,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  toastCritical: {
+    borderColor: '#EF4444',
+    borderWidth: 2,
   },
   textContainer: {
     flex: 1,
@@ -292,6 +344,9 @@ const styles = StyleSheet.create({
   },
   updateButtonDisabled: {
     opacity: 0.7,
+  },
+  updateButtonCritical: {
+    backgroundColor: '#EF4444',
   },
   updateText: {
     color: '#FFFFFF',
