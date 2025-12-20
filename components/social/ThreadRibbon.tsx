@@ -145,21 +145,26 @@ export const ThreadRibbon = memo(function ThreadRibbon({
   }
 
   return (
-    <FlashList
-      data={items}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      getItemType={getItemType}
-      estimatedItemSize={100}
-      ListHeaderComponent={ListHeaderComponent}
-      ListFooterComponent={ListFooterComponent}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    />
+    <View style={styles.listContainer}>
+      <FlashList
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemType={getItemType}
+        estimatedItemSize={100}
+        ListHeaderComponent={ListHeaderComponent}
+        ListFooterComponent={ListFooterComponent}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
+  listContainer: {
+    flex: 1,
+  },
   contentContainer: {
     paddingBottom: 100, // Space for reply bar
   },

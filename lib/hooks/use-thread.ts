@@ -52,7 +52,7 @@ export function useThread(postId: string) {
           .select('id')
           .eq('post_id', postId)
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
         isLiked = !!like;
       }
 
@@ -101,7 +101,7 @@ async function fetchAncestors(
       .select('id')
       .eq('post_id', parent.id)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     isLiked = !!like;
   }
 
