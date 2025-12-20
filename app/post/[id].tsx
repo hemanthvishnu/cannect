@@ -167,7 +167,7 @@ export default function PostDetailsScreen() {
   }
 
   // Determine if focused post is a reply for header title
-  const isReply = thread.post.is_reply || thread.ancestors.length > 0;
+  const isReply = thread.focusedPost.is_reply || thread.ancestors.length > 0;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
