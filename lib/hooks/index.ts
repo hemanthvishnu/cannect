@@ -9,6 +9,7 @@ export * from "./use-debounce";
 export * from "./use-media-upload";
 export * from "./use-pwa-persistence";
 export * from "./use-network-status";
+export * from "./use-thread";
 
 // Web push utilities
 export { 
