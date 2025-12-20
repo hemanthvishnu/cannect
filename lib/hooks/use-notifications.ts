@@ -4,6 +4,7 @@
  * Updated for Bluesky AT Protocol compatibility:
  * - Uses `reason` instead of `type` (matches Bluesky notification reasons)
  * - Supports: like, repost, follow, mention, reply, quote
+ * - Supports external actors (Bluesky users via Jetstream)
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,18 +15,25 @@ import type { NotificationReason } from "@/lib/types/database";
 interface Notification {
   id: string;
   user_id: string;
-  actor_id: string;
+  actor_id?: string;
   // Federation-ready: use 'reason' instead of 'type' (Bluesky pattern)
   reason: NotificationReason;
   post_id?: string;
   is_read: boolean;
   created_at: string;
+  // Internal actor (Cannect user)
   actor?: {
     id: string;
     display_name: string;
     username: string;
     avatar_url?: string;
   };
+  // External actor fields (Bluesky users)
+  is_external?: boolean;
+  actor_did?: string;
+  actor_handle?: string;
+  actor_display_name?: string;
+  actor_avatar?: string;
 }
 
 // Fetch user's notifications
@@ -48,7 +56,13 @@ export function useNotifications() {
         .limit(50);
 
       if (error) throw error;
-      return data as Notification[];
+      
+      // Normalize notifications to have consistent shape
+      return (data || []).map(notification => ({
+        ...notification,
+        // For external notifications, actor_id may be null
+        // External fields will be: is_external, actor_did, actor_handle, actor_display_name, actor_avatar
+      })) as Notification[];
     },
     enabled: !!user,
   });
