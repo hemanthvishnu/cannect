@@ -230,8 +230,14 @@ async function createRecord(
   });
 
   if (!response.ok) {
-    // Check if it's an auth error
-    if (response.status === 401) {
+    const error = await response.json();
+    const errorMessage = error.message || error.error || response.statusText;
+    
+    // Check if it's an auth error (401 OR error mentions token/expired)
+    const needsRefresh = response.status === 401 || 
+      (errorMessage && (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('expired')));
+    
+    if (needsRefresh) {
       // Try to refresh the token
       const refreshed = await refreshPdsSession(session.refresh_jwt);
       if (refreshed) {
@@ -270,8 +276,7 @@ async function createRecord(
       }
     }
 
-    const error = await response.json();
-    throw new Error(`PDS error: ${error.message || error.error || response.statusText}`);
+    throw new Error(`PDS error: ${errorMessage}`);
   }
 
   const result = await response.json();
@@ -305,8 +310,14 @@ async function deleteRecord(
       return { success: true };
     }
 
-    // Try token refresh on 401
-    if (response.status === 401) {
+    const error = await response.json();
+    const errorMessage = error.message || error.error || response.statusText;
+    
+    // Try token refresh on 401 OR if error mentions token/expired
+    const needsRefresh = response.status === 401 || 
+      (errorMessage && (errorMessage.toLowerCase().includes('token') || errorMessage.toLowerCase().includes('expired')));
+    
+    if (needsRefresh) {
       const refreshed = await refreshPdsSession(session.refresh_jwt);
       if (refreshed) {
         await supabase
@@ -340,8 +351,7 @@ async function deleteRecord(
       }
     }
 
-    const error = await response.json();
-    throw new Error(`PDS delete error: ${error.message || error.error || response.statusText}`);
+    throw new Error(`PDS delete error: ${errorMessage}`);
   }
 
   return { success: true };

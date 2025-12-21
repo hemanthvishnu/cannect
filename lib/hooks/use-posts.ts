@@ -459,6 +459,110 @@ export function useUserPosts(userId: string, tab: ProfileTab = 'posts') {
       const from = pageParam * POSTS_PER_PAGE;
       const to = from + POSTS_PER_PAGE - 1;
 
+      // For 'posts' tab, we need to merge authored posts + reposts
+      if (tab === 'posts') {
+        // 1. Fetch user's authored posts (not replies)
+        const { data: authoredPosts, error: postsError } = await supabase
+          .from("posts")
+          .select(`
+            *,
+            author:profiles!user_id(*),
+            likes:likes(count),
+            quoted_post:repost_of_id(
+              *,
+              author:profiles!user_id(*),
+              likes:likes(count)
+            ),
+            parent_post:thread_parent_id(
+              author:profiles!user_id(username, display_name)
+            ),
+            external_id,
+            external_source,
+            external_metadata
+          `)
+          .eq("user_id", userId)
+          .eq("is_reply", false)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        if (postsError) throw postsError;
+
+        // 2. Fetch user's profile info for reposted_by
+        const { data: userProfile } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .eq("id", userId)
+          .single();
+
+        // 3. Fetch user's reposts
+        const { data: repostsData, error: repostsError } = await supabase
+          .from("reposts")
+          .select(`
+            id,
+            created_at,
+            user_id,
+            post_id,
+            post:posts!post_id(
+              *,
+              author:profiles!user_id(*),
+              likes:likes(count),
+              quoted_post:repost_of_id(
+                *,
+                author:profiles!user_id(*),
+                likes:likes(count)
+              ),
+              parent_post:thread_parent_id(
+                author:profiles!user_id(username, display_name)
+              ),
+              external_id,
+              external_source,
+              external_metadata
+            )
+          `)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        if (repostsError) throw repostsError;
+
+        // 4. Transform reposts with reposted_by info
+        const repostedPosts = (repostsData || [])
+          .filter((r: any) => r.post && r.post.is_reply === false)
+          .map((r: any) => ({
+            ...r.post,
+            reposted_by: userProfile,
+            reposted_at: r.created_at,
+            _feed_timestamp: r.created_at,
+          }));
+
+        // 5. Add timestamp to authored posts
+        const authoredWithTimestamp = (authoredPosts || []).map((p: any) => ({
+          ...p,
+          _feed_timestamp: p.created_at,
+        }));
+
+        // 6. Merge and deduplicate
+        const allPosts = [...authoredWithTimestamp, ...repostedPosts];
+        const seenPostIds = new Set<string>();
+        const deduplicatedPosts = allPosts.filter((p: any) => {
+          if (seenPostIds.has(p.id)) return false;
+          seenPostIds.add(p.id);
+          return true;
+        });
+
+        // 7. Sort by feed timestamp
+        deduplicatedPosts.sort((a: any, b: any) =>
+          new Date(b._feed_timestamp).getTime() - new Date(a._feed_timestamp).getTime()
+        );
+
+        // 8. Take page slice
+        const pagedPosts = deduplicatedPosts.slice(0, POSTS_PER_PAGE);
+
+        // 9. Enrich with status
+        return enrichPostsWithStatus(pagedPosts, user?.id);
+      }
+
+      // For 'replies' and 'media' tabs, use simple query
       let query = supabase
         .from("posts")
         .select(`
@@ -478,11 +582,7 @@ export function useUserPosts(userId: string, tab: ProfileTab = 'posts') {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      // Tab Filtering
-      if (tab === 'posts') {
-        // Show ONLY original content (posts, quotes) - exclude replies
-        query = query.eq('is_reply', false);
-      } else if (tab === 'replies') {
+      if (tab === 'replies') {
         // Show ONLY conversational interactions - all replies
         query = query.eq('is_reply', true);
       } else if (tab === 'media') {
