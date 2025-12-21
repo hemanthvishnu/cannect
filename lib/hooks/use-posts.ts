@@ -95,7 +95,7 @@ async function fetchPostsWithCounts(query: any, userId?: string) {
 // --- Modified Fetchers ---
 
 /**
- * Main feed query - includes own posts + reposts from reposts table
+ * Main feed query - includes all posts + reposts from reposts table
  * 
  * Federation-ready: Uses thread_parent_id, replies_count, and reposts table
  */
@@ -108,9 +108,8 @@ export function useFeed() {
       const from = pageParam * POSTS_PER_PAGE;
       const to = from + POSTS_PER_PAGE - 1;
 
-      // Select posts with thread context
-      // Note: For quotes, we use repost_of_id to get the original post being quoted
-      const query = supabase
+      // 1. Fetch all posts (not replies)
+      const { data: authoredPosts, error: postsError } = await supabase
         .from("posts")
         .select(`
           *,
@@ -141,7 +140,85 @@ export function useFeed() {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      return fetchPostsWithCounts(query, user?.id);
+      if (postsError) throw postsError;
+
+      // 2. Fetch all reposts (to show posts with "Reposted by" header)
+      const { data: repostsData, error: repostsError } = await supabase
+        .from("reposts")
+        .select(`
+          id,
+          created_at,
+          user_id,
+          post_id,
+          reposter:profiles!user_id(id, username, display_name, avatar_url),
+          post:posts!post_id(
+            *,
+            author:profiles!user_id(*),
+            likes:likes(count),
+            quoted_post:repost_of_id(
+              id,
+              content,
+              created_at,
+              media_urls,
+              is_reply,
+              thread_parent_id,
+              thread_root_id,
+              replies_count,
+              reposts_count,
+              quoted_post_id:repost_of_id,
+              author:profiles!user_id(*),
+              likes:likes(count)
+            ),
+            parent_post:thread_parent_id(
+              author:profiles!user_id(username, display_name)
+            ),
+            external_id,
+            external_source,
+            external_metadata
+          )
+        `)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (repostsError) throw repostsError;
+
+      // 3. Transform reposts with reposted_by info
+      const repostedPosts = (repostsData || [])
+        .filter((r: any) => r.post && r.post.is_reply === false)
+        .map((r: any) => ({
+          ...r.post,
+          reposted_by: r.reposter,
+          reposted_at: r.created_at,
+          _feed_timestamp: r.created_at,
+        }));
+
+      // 4. Add timestamp to authored posts
+      const authoredWithTimestamp = (authoredPosts || []).map((p: any) => ({
+        ...p,
+        _feed_timestamp: p.created_at,
+      }));
+
+      // 5. Merge all posts
+      const allPosts = [...authoredWithTimestamp, ...repostedPosts];
+
+      // 6. Sort by feed timestamp FIRST (most recent first)
+      allPosts.sort((a: any, b: any) => 
+        new Date(b._feed_timestamp).getTime() - new Date(a._feed_timestamp).getTime()
+      );
+
+      // 7. Deduplicate (keep first/newest occurrence of each post)
+      const seenPostIds = new Set<string>();
+      const deduplicatedPosts = allPosts.filter((p: any) => {
+        if (seenPostIds.has(p.id)) return false;
+        seenPostIds.add(p.id);
+        return true;
+      });
+
+      // 8. Take only the page slice
+      const pagedPosts = deduplicatedPosts.slice(0, POSTS_PER_PAGE);
+
+      // 9. Enrich with is_liked and is_reposted_by_me
+      return enrichPostsWithStatus(pagedPosts, user?.id);
     },
     getNextPageParam: (lastPage, allPages) => lastPage.length < POSTS_PER_PAGE ? undefined : allPages.length,
     initialPageParam: 0,
@@ -266,9 +343,6 @@ export function useFollowingFeed() {
           // Use repost timestamp for feed ordering
           _feed_timestamp: r.created_at,
         }));
-      
-      console.log('[useFollowingFeed] repostedPosts count:', repostedPosts.length);
-      console.log('[useFollowingFeed] repostedPosts:', repostedPosts.map((p: any) => ({ id: p.id, reposted_by: p.reposted_by, timestamp: p._feed_timestamp })));
 
       // 5. Add feed timestamp to authored posts
       const authoredWithTimestamp = (authoredPosts || []).map((p: any) => ({
@@ -276,7 +350,7 @@ export function useFollowingFeed() {
         _feed_timestamp: p.created_at,
       }));
       
-      console.log('[useFollowingFeed] authoredWithTimestamp count:', authoredWithTimestamp.length);
+      // 6. Merge all posts
 
       // 6. Merge all posts
       const allPosts = [...authoredWithTimestamp, ...repostedPosts];
@@ -293,8 +367,6 @@ export function useFollowingFeed() {
         seenPostIds.add(p.id);
         return true;
       });
-      
-      console.log('[useFollowingFeed] after dedup, posts with reposted_by:', deduplicatedPosts.filter((p: any) => p.reposted_by).map((p: any) => ({ id: p.id, content: p.content?.substring(0, 20), reposted_by: p.reposted_by?.username })));
 
       // 9. Take only the page slice
       const pagedPosts = deduplicatedPosts.slice(0, POSTS_PER_PAGE);
