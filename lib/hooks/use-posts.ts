@@ -1134,26 +1134,47 @@ export function useToggleRepost() {
       
       const shouldUndo = undo || post.is_reposted_by_me;
 
-      // Update Feed cache
-      queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
+      // Helper to update a post in a pages array
+      const updatePostInPages = (old: any) => {
         if (!old) return old;
         return {
           ...old,
           pages: old.pages.map((page: any) => 
-            page.map((p: any) => 
-              p.id === post.id 
-                ? { 
-                    ...p, 
-                    is_reposted_by_me: !shouldUndo,
-                    reposts_count: shouldUndo 
-                      ? Math.max(0, (p.reposts_count || 0) - 1)
-                      : (p.reposts_count || 0) + 1
-                  }
-                : p
-            )
+            shouldUndo
+              // When unreposting: remove the repost entry OR clear reposted_by on the original
+              ? page.filter((p: any) => !(p.id === post.id && p.reposted_by)).map((p: any) =>
+                  p.id === post.id
+                    ? {
+                        ...p,
+                        is_reposted_by_me: false,
+                        reposts_count: Math.max(0, (p.reposts_count || 0) - 1),
+                        reposted_by: undefined,
+                        reposted_at: undefined,
+                      }
+                    : p
+                )
+              // When reposting: just update the flags
+              : page.map((p: any) =>
+                  p.id === post.id
+                    ? {
+                        ...p,
+                        is_reposted_by_me: true,
+                        reposts_count: (p.reposts_count || 0) + 1,
+                      }
+                    : p
+                )
           ),
         };
-      });
+      };
+
+      // Update Feed cache (all posts)
+      queryClient.setQueryData(queryKeys.posts.all, updatePostInPages);
+      
+      // Update all user post caches (profile pages)
+      queryClient.setQueriesData(
+        { queryKey: ['posts', 'user'], exact: false },
+        updatePostInPages
+      );
 
       // Also update Detail view cache
       queryClient.setQueryData(queryKeys.posts.detail(post.id), (old: any) => {
@@ -1163,7 +1184,10 @@ export function useToggleRepost() {
           is_reposted_by_me: !shouldUndo,
           reposts_count: shouldUndo 
             ? Math.max(0, (old.reposts_count || 0) - 1)
-            : (old.reposts_count || 0) + 1
+            : (old.reposts_count || 0) + 1,
+          // Clear reposted_by when unreposting
+          reposted_by: shouldUndo ? undefined : old.reposted_by,
+          reposted_at: shouldUndo ? undefined : old.reposted_at,
         };
       });
 
