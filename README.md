@@ -1,6 +1,8 @@
 # 🌿 Cannect
 
-A modern social media app built with React Native, Expo, and Supabase.
+A modern, federated social media app built with React Native, Expo, and Supabase.
+
+> 📖 **Want to understand how Cannect was built?** Check out [PHASES.md](./PHASES.md) for a detailed review of the 5 development phases!
 
 ## ✨ Features
 
@@ -10,6 +12,7 @@ A modern social media app built with React Native, Expo, and Supabase.
 - **Profiles** - User profiles with followers/following
 - **Search** - Search users and posts
 - **Notifications** - Real-time notifications
+- **Federation** - View Bluesky profiles and posts (AT Protocol ready)
 - **Dark Theme** - Premium green & dark design
 
 ## 🛠️ Tech Stack
@@ -29,8 +32,10 @@ A modern social media app built with React Native, Expo, and Supabase.
   - Real-time subscriptions
   - Storage (for media)
 
-### Optional
-- **Cloudflare** - CDN, R2 storage, Workers
+### Federation
+- **AT Protocol** - Bluesky compatibility
+- **DIDs** - Decentralized identity support
+- **Edge Functions** - Bluesky proxy for federated content
 
 ## 🚀 Getting Started
 
@@ -158,10 +163,16 @@ Use NativeWind (Tailwind) classes:
 </View>
 ```
 
+## 📚 Documentation
+
+- **[PHASES.md](./PHASES.md)** - Detailed review of the 5 development phases
+- **[schema.sql](./supabase/schema.sql)** - Standalone database schema
+- **[federation_ready_schema.sql](./supabase/federation_ready_schema.sql)** - Federation-ready schema with AT Protocol support
+
 ## 📄 License
 
 MIT License - feel free to use this for your own projects!
 
 ---
 
-Built with 💚 using Expo & Supabase
+Built with 💚 using Expo & Supabase | Developed in 5 phases from foundation to federation
