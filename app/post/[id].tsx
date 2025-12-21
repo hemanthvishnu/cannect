@@ -1,4 +1,4 @@
-import { View, Text, KeyboardAvoidingView, Platform, Pressable, Alert } from "react-native";
+import { View, Text, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
@@ -6,7 +6,7 @@ import { useState, useCallback } from "react";
 import * as Haptics from "expo-haptics";
 
 import { useThread, useThreadReply, useThreadDelete, useLikePost, useUnlikePost, useToggleRepost } from "@/lib/hooks";
-import { ThreadRibbon, ThreadSkeleton, ReplyBar, RepostMenu } from "@/components/social";
+import { ThreadRibbon, ThreadSkeleton, ReplyBar, RepostMenu, PostOptionsMenu } from "@/components/social";
 import { useAuthStore } from "@/lib/stores";
 import type { PostWithAuthor } from "@/lib/types/database";
 
@@ -45,6 +45,10 @@ export default function PostDetailsScreen() {
   // Repost menu state
   const [repostMenuVisible, setRepostMenuVisible] = useState(false);
   const [repostMenuPost, setRepostMenuPost] = useState<PostWithAuthor | null>(null);
+  
+  // Post options menu state
+  const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [optionsMenuPost, setOptionsMenuPost] = useState<PostWithAuthor | null>(null);
 
   const handleReply = (text: string) => {
     if (!text.trim() || !id) return;
@@ -137,26 +141,25 @@ export default function PostDetailsScreen() {
   }, [repostMenuPost, router]);
 
   const handleMore = (post: PostWithAuthor) => {
-    if (post.user_id !== user?.id) return;
-    
-    // Check if this is the focused post (delete = go back) or a reply (delete in place)
-    const isFocusedPost = post.id === id;
-    
-    Alert.alert("Manage Post", "Delete this post?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => {
-        if (isFocusedPost) {
-          // Deleting the main focused post - go back after delete
-          deleteReply.mutate(post.id, {
-            onSuccess: () => router.back(),
-          });
-        } else {
-          // Deleting a reply - optimistic update, stay on page
-          deleteReply.mutate(post.id);
-        }
-      }}
-    ]);
+    setOptionsMenuPost(post);
+    setOptionsMenuVisible(true);
   };
+  
+  const handleDoDelete = useCallback(() => {
+    if (!optionsMenuPost) return;
+    
+    const isFocusedPost = optionsMenuPost.id === id;
+    
+    if (isFocusedPost) {
+      // Deleting the main focused post - go back after delete
+      deleteReply.mutate(optionsMenuPost.id, {
+        onSuccess: () => router.back(),
+      });
+    } else {
+      // Deleting a reply - optimistic update, stay on page
+      deleteReply.mutate(optionsMenuPost.id);
+    }
+  }, [optionsMenuPost, id, deleteReply, router]);
 
   // Loading state
   if (isLoading || !thread) {
@@ -232,6 +235,15 @@ export default function PostDetailsScreen() {
         onRepost={handleDoRepost}
         onQuotePost={handleDoQuotePost}
         isReposted={(repostMenuPost as any)?.is_reposted_by_me === true}
+      />
+      
+      {/* Post Options Menu (Delete, Copy Link, Report) */}
+      <PostOptionsMenu
+        isVisible={optionsMenuVisible}
+        onClose={() => setOptionsMenuVisible(false)}
+        onDelete={handleDoDelete}
+        isOwnPost={optionsMenuPost?.user_id === user?.id}
+        postUrl={optionsMenuPost ? `https://cannect.app/post/${optionsMenuPost.id}` : undefined}
       />
     </SafeAreaView>
   );

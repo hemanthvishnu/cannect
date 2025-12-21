@@ -8,6 +8,7 @@ export * from "./ReplyBar";
 export * from "./EmptyFeedState";
 export * from "./DiscoveryModal";
 export * from "./RepostMenu";
+export * from "./PostOptionsMenu";
 
 // Post Ribbon components (Bluesky threading pattern)
 export * from "./AncestorPost";

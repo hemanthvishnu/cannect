@@ -127,7 +127,7 @@ export const ThreadReply = memo(function ThreadReply({
                 {formatDistanceToNow(new Date(post.created_at))}
               </Text>
             </View>
-            {isOwnPost && onMore && (
+            {onMore && (
               <Pressable onPress={handleMore} hitSlop={8} style={styles.moreButton}>
                 <MoreHorizontal size={16} color="#6B7280" />
               </Pressable>
