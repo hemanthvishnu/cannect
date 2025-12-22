@@ -55,14 +55,24 @@ export const ThreadRibbon = memo(function ThreadRibbon({
     router.push({ pathname: '/user/[id]', params: { id: userId } });
   }, [router]);
 
-  // Render individual items
-  const renderItem: ListRenderItem<ThreadListItem> = useCallback(({ item }) => {
+  // Render individual items - uses index to determine connector lines
+  const renderItem: ListRenderItem<ThreadListItem> = useCallback(({ item, index }) => {
+    // Count ancestors to determine line connections
+    const ancestorCount = items.filter(i => i.type === 'ancestor').length;
+    const hasAncestors = ancestorCount > 0;
+    
     switch (item.type) {
       case 'ancestor':
+        // Find ancestor index (0-based among ancestors)
+        const ancestorIndex = index; // ancestors are first in list
+        const isFirstAncestor = ancestorIndex === 0;
+        
         return (
           <ThreadPost
             post={item.post}
             isAncestor
+            showParentLine={!isFirstAncestor} // Show line from above (except first)
+            showChildLine={true} // Always show line to next post
             onPress={() => navigateToPost(item.post.id)}
             onLike={() => onLike(item.post)}
             onReply={() => onReply(item.post, item.post.author?.username)}
@@ -77,6 +87,8 @@ export const ThreadRibbon = memo(function ThreadRibbon({
           <ThreadPost
             post={item.post}
             isFocused
+            showParentLine={hasAncestors} // Show line from last ancestor
+            showChildLine={false} // No line to replies
             onLike={() => onLike(item.post)}
             onReply={() => onReply(item.post, item.post.author?.username)}
             onRepost={() => onRepost(item.post)}
@@ -129,7 +141,7 @@ export const ThreadRibbon = memo(function ThreadRibbon({
       default:
         return null;
     }
-  }, [navigateToPost, navigateToProfile, onLike, onReply, onRepost, onMore, onLoadMore, isLoadingMore]);
+  }, [items, navigateToPost, navigateToProfile, onLike, onReply, onRepost, onMore, onLoadMore, isLoadingMore]);
 
   // Key extractor
   const keyExtractor = useCallback((item: ThreadListItem, index: number) => {

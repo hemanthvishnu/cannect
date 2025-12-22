@@ -27,6 +27,10 @@ interface ThreadPostProps {
   isFocused?: boolean;
   /** Is this an ancestor post (no bottom border - flows into next) */
   isAncestor?: boolean;
+  /** Show connector line from parent above (entering from top) */
+  showParentLine?: boolean;
+  /** Show connector line to child below (exiting to bottom) */
+  showChildLine?: boolean;
   
   // Actions
   onPress?: () => void;
@@ -43,6 +47,8 @@ export const ThreadPost = memo(function ThreadPost({
   replyingTo,
   isFocused = false,
   isAncestor = false,
+  showParentLine = false,
+  showChildLine = false,
   onPress,
   onLike,
   onReply,
@@ -86,16 +92,29 @@ export const ThreadPost = memo(function ThreadPost({
 
   const content = (
     <View style={styles.container}>
+      {/* Parent Reply Line - connects from post above */}
+      {showParentLine && (
+        <View style={styles.parentLineContainer}>
+          <View style={styles.parentLine} />
+        </View>
+      )}
+      
       {/* Main Post Content Row */}
       <View style={styles.mainRow}>
-        {/* Avatar */}
-        <Pressable onPress={onProfilePress} style={styles.avatarContainer}>
-          <Image
-            source={{ uri: post.author?.avatar_url }}
-            style={styles.avatar}
-            contentFit="cover"
-          />
-        </Pressable>
+        {/* Avatar Column with optional child line */}
+        <View style={styles.avatarColumn}>
+          <Pressable onPress={onProfilePress}>
+            <Image
+              source={{ uri: post.author?.avatar_url }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
+          </Pressable>
+          {/* Child Reply Line - connects to post below */}
+          {showChildLine && (
+            <View style={styles.childLine} />
+          )}
+        </View>
 
         {/* Right: Content */}
         <View style={styles.contentColumn}>
@@ -233,11 +252,13 @@ const styles = StyleSheet.create({
   mainRow: {
     flexDirection: 'row',
     paddingHorizontal: THREAD_DESIGN.OUTER_SPACE,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   
-  // Avatar
-  avatarContainer: {
+  // Avatar column (contains avatar + optional child line)
+  avatarColumn: {
+    alignItems: 'center',
     marginRight: THREAD_DESIGN.AVATAR_GAP,
   },
   avatar: {
@@ -245,6 +266,27 @@ const styles = StyleSheet.create({
     height: THREAD_DESIGN.AVATAR_SIZE,
     borderRadius: THREAD_DESIGN.AVATAR_SIZE / 2,
     backgroundColor: '#1A1A1A',
+  },
+  
+  // Parent line (from post above)
+  parentLineContainer: {
+    paddingLeft: THREAD_DESIGN.OUTER_SPACE,
+    height: 12,
+  },
+  parentLine: {
+    width: THREAD_DESIGN.LINE_WIDTH,
+    height: '100%',
+    backgroundColor: '#333',
+    marginLeft: (THREAD_DESIGN.AVATAR_SIZE - THREAD_DESIGN.LINE_WIDTH) / 2,
+  },
+  
+  // Child line (to post below)
+  childLine: {
+    width: THREAD_DESIGN.LINE_WIDTH,
+    flex: 1,
+    minHeight: 12,
+    marginTop: 4,
+    backgroundColor: '#333',
   },
   
   // Content column
