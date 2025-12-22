@@ -13,10 +13,50 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tansta
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/lib/query-client";
 import type { PostWithAuthor } from "@/lib/types/database";
+import type { ThreadView, ThreadNode } from "@/lib/types/thread";
 import { useAuthStore } from "@/lib/stores";
 import { generateTID, parseTextToFacets, buildAtUri } from "@/lib/utils/atproto";
 
 const POSTS_PER_PAGE = 20;
+
+/**
+ * Helper to update a post within a ThreadView (ancestors, focusedPost, or descendants)
+ * Used for optimistic updates on likes, reposts, etc. in thread context
+ */
+function updatePostInThread(
+  thread: ThreadView,
+  postId: string,
+  updater: (post: PostWithAuthor) => PostWithAuthor
+): ThreadView {
+  return {
+    ...thread,
+    // Update focused post if it matches
+    focusedPost: thread.focusedPost.id === postId 
+      ? updater(thread.focusedPost) 
+      : thread.focusedPost,
+    // Update ancestors
+    ancestors: thread.ancestors.map(post => 
+      post.id === postId ? updater(post) : post
+    ),
+    // Update descendants recursively
+    descendants: updateNodesRecursively(thread.descendants, postId, updater),
+  };
+}
+
+/**
+ * Recursively update a post within ThreadNode[] structure
+ */
+function updateNodesRecursively(
+  nodes: ThreadNode[],
+  postId: string,
+  updater: (post: PostWithAuthor) => PostWithAuthor
+): ThreadNode[] {
+  return nodes.map(node => ({
+    ...node,
+    post: node.post.id === postId ? updater(node.post) : node.post,
+    children: updateNodesRecursively(node.children, postId, updater),
+  }));
+}
 
 /**
  * Helper to enrich posts with engagement flags and counts
@@ -735,6 +775,10 @@ export function useLikePost() {
       
       const previousPosts = queryClient.getQueryData(queryKeys.posts.all);
       const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(postId));
+      
+      // Capture all thread caches that might contain this post
+      const threadQueries = queryClient.getQueriesData<ThreadView>({ queryKey: ['thread'] });
+      const previousThreads = new Map(threadQueries);
 
       // Update Feed
       queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
@@ -756,18 +800,33 @@ export function useLikePost() {
         if (!old) return old;
         return { ...old, is_liked: true, likes_count: (old.likes_count || 0) + 1 };
       });
+      
+      // Update all thread views that contain this post
+      threadQueries.forEach(([queryKey, thread]) => {
+        if (!thread) return;
+        queryClient.setQueryData(queryKey, updatePostInThread(thread, postId, (post) => ({
+          ...post,
+          is_liked: true,
+          likes_count: (post.likes_count || 0) + 1,
+        })));
+      });
 
-      return { previousPosts, previousDetail, postId };
+      return { previousPosts, previousDetail, previousThreads, postId };
     },
     onError: (err, { postId }, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
       if (context?.postId) {
         queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
       }
+      // Restore thread caches
+      context?.previousThreads?.forEach((thread, queryKey) => {
+        queryClient.setQueryData(queryKey, thread);
+      });
     },
     onSettled: (data, error, { postId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
+      queryClient.invalidateQueries({ queryKey: ['thread'] });
     },
   });
 }
@@ -793,6 +852,10 @@ export function useUnlikePost() {
       
       const previousPosts = queryClient.getQueryData(queryKeys.posts.all);
       const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(postId));
+      
+      // Capture all thread caches that might contain this post
+      const threadQueries = queryClient.getQueriesData<ThreadView>({ queryKey: ['thread'] });
+      const previousThreads = new Map(threadQueries);
 
       queryClient.setQueryData(queryKeys.posts.all, (old: any) => {
         if (!old) return old;
@@ -813,18 +876,33 @@ export function useUnlikePost() {
         if (!old) return old;
         return { ...old, is_liked: false, likes_count: Math.max(0, (old.likes_count || 0) - 1) };
       });
+      
+      // Update all thread views that contain this post
+      threadQueries.forEach(([queryKey, thread]) => {
+        if (!thread) return;
+        queryClient.setQueryData(queryKey, updatePostInThread(thread, postId, (post) => ({
+          ...post,
+          is_liked: false,
+          likes_count: Math.max(0, (post.likes_count || 0) - 1),
+        })));
+      });
 
-      return { previousPosts, previousDetail, postId };
+      return { previousPosts, previousDetail, previousThreads, postId };
     },
     onError: (err, postId, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
       if (context?.postId) {
         queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
       }
+      // Restore thread caches
+      context?.previousThreads?.forEach((thread, queryKey) => {
+        queryClient.setQueryData(queryKey, thread);
+      });
     },
     onSettled: (data, error, postId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
+      queryClient.invalidateQueries({ queryKey: ['thread'] });
     },
   });
 }
@@ -1173,6 +1251,10 @@ export function useToggleRepost() {
       const previousPosts = queryClient.getQueryData(queryKeys.posts.all);
       const previousDetail = queryClient.getQueryData(queryKeys.posts.detail(post.id));
       
+      // Capture all thread caches that might contain this post
+      const threadQueries = queryClient.getQueriesData<ThreadView>({ queryKey: ['thread'] });
+      const previousThreads = new Map(threadQueries);
+      
       const shouldUndo = undo || post.is_reposted_by_me;
       
       // Get current user's profile for "Reposted by you" header
@@ -1242,18 +1324,35 @@ export function useToggleRepost() {
           reposted_at: shouldUndo ? undefined : new Date().toISOString(),
         };
       });
+      
+      // Update all thread views that contain this post
+      threadQueries.forEach(([queryKey, thread]) => {
+        if (!thread) return;
+        queryClient.setQueryData(queryKey, updatePostInThread(thread, post.id, (p) => ({
+          ...p,
+          is_reposted_by_me: !shouldUndo,
+          reposts_count: shouldUndo 
+            ? Math.max(0, (p.reposts_count || 0) - 1)
+            : (p.reposts_count || 0) + 1,
+        })));
+      });
 
-      return { previousPosts, previousDetail, postId: post.id };
+      return { previousPosts, previousDetail, previousThreads, postId: post.id };
     },
     onError: (err, vars, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
       if (context?.postId) {
         queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
       }
+      // Restore thread caches
+      context?.previousThreads?.forEach((thread, queryKey) => {
+        queryClient.setQueryData(queryKey, thread);
+      });
     },
     onSettled: (data, error, { post }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(post.id) });
+      queryClient.invalidateQueries({ queryKey: ['thread'] });
       if (user?.id) {
         queryClient.invalidateQueries({ queryKey: queryKeys.posts.byUser(user.id) });
       }
