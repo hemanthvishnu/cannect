@@ -272,21 +272,22 @@ const styles = StyleSheet.create({
   },
   
   // Continuous line container (absolute positioned behind avatar)
+  // Uses negative margins to extend into the padding area
   lineContainer: {
     position: 'absolute',
     left: (THREAD_DESIGN.AVATAR_SIZE - THREAD_DESIGN.LINE_WIDTH) / 2,
-    top: 0,
-    bottom: 0,
+    top: -12, // Extend into top padding
+    bottom: -12, // Extend into bottom padding
     width: THREAD_DESIGN.LINE_WIDTH,
     alignItems: 'center',
   },
-  // Line from top of post to avatar center
+  // Line from top of container to avatar center (padding + half avatar)
   lineTop: {
     width: THREAD_DESIGN.LINE_WIDTH,
-    height: THREAD_DESIGN.AVATAR_SIZE / 2,
+    height: 12 + THREAD_DESIGN.AVATAR_SIZE / 2, // padding + half avatar
     backgroundColor: '#333',
   },
-  // Line from avatar center to bottom of post
+  // Line from avatar center to bottom of container
   lineBottom: {
     width: THREAD_DESIGN.LINE_WIDTH,
     flex: 1,
