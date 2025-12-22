@@ -94,7 +94,7 @@ export function useThread(postId: string) {
           is_liked: focusedIsLiked,
           is_reposted_by_me: focusedIsReposted,
         } as PostWithAuthor,
-        ancestors: ancestors.reverse(), // Root first
+        ancestors, // Already in order: [root, ..., parent]
         replies,
         totalReplies: focusedPost.replies_count || 0,
         hasMoreReplies: replies.length >= THREAD_CONFIG.REPLIES_PER_PAGE,
