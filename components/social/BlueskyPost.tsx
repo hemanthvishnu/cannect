@@ -81,7 +81,8 @@ export function BlueskyPost({
   };
 
   const handleAuthorPress = () => {
-    router.push(`/federated/${post.author.handle}` as any);
+    // Use unified profile routing
+    router.push(`/user/${post.author.handle}` as any);
   };
 
   const handleReply = () => {
@@ -111,15 +112,25 @@ export function BlueskyPost({
   };
 
   const timeAgo = formatDistanceToNow(new Date(post.createdAt));
+  
+  // Generate fallback avatar URL
+  const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.displayName || post.author.handle)}&background=3B82F6&color=fff&size=88`;
 
   return (
     <Pressable onPress={handlePostPress} className="px-4 py-3 border-b border-border">
       {/* Author Row */}
       <Pressable onPress={handleAuthorPress} className="flex-row items-center gap-3 mb-2">
         <Image
-          source={{ uri: post.author.avatar || `https://ui-avatars.com/api/?name=${post.author.displayName || post.author.handle}&background=3B82F6&color=fff` }}
+          source={{ uri: post.author.avatar || fallbackAvatar }}
+          placeholder={fallbackAvatar}
+          placeholderContentFit="cover"
           style={{ width: 44, height: 44, borderRadius: 22 }}
           contentFit="cover"
+          cachePolicy="memory-disk"
+          recyclingKey={post.author.did}
+          onError={() => {
+            // Fallback handled by placeholder
+          }}
         />
         <View className="flex-1">
           <Text className="text-text-primary font-semibold">
@@ -144,6 +155,9 @@ export function BlueskyPost({
               source={{ uri: post.images[0] }}
               style={{ width: "100%", height: 200 }}
               contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={post.uri}
+              transition={200}
             />
           ) : (
             <View className="flex-row flex-wrap gap-1">
@@ -153,6 +167,9 @@ export function BlueskyPost({
                   source={{ uri: img }}
                   style={{ width: "48%", height: 120 }}
                   contentFit="cover"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`${post.uri}-${i}`}
+                  transition={200}
                 />
               ))}
             </View>
