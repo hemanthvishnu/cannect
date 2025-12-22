@@ -92,28 +92,28 @@ export const ThreadPost = memo(function ThreadPost({
 
   const content = (
     <View style={styles.container}>
-      {/* Parent Reply Line - connects from post above */}
-      {showParentLine && (
-        <View style={styles.parentLineContainer}>
-          <View style={styles.parentLine} />
-        </View>
-      )}
-      
       {/* Main Post Content Row */}
       <View style={styles.mainRow}>
-        {/* Avatar Column with optional child line */}
+        {/* Avatar Column with connector lines */}
         <View style={styles.avatarColumn}>
-          <Pressable onPress={onProfilePress}>
+          {/* Continuous line behind avatar - absolute positioned */}
+          {(showParentLine || showChildLine) && (
+            <View style={styles.lineContainer}>
+              {/* Line from top to avatar center */}
+              {showParentLine && <View style={styles.lineTop} />}
+              {/* Line from avatar center to bottom */}
+              {showChildLine && <View style={styles.lineBottom} />}
+            </View>
+          )}
+          
+          {/* Avatar on top of line */}
+          <Pressable onPress={onProfilePress} style={styles.avatarWrapper}>
             <Image
               source={{ uri: post.author?.avatar_url }}
               style={styles.avatar}
               contentFit="cover"
             />
           </Pressable>
-          {/* Child Reply Line - connects to post below */}
-          {showChildLine && (
-            <View style={styles.childLine} />
-          )}
         </View>
 
         {/* Right: Content */}
@@ -252,14 +252,17 @@ const styles = StyleSheet.create({
   mainRow: {
     flexDirection: 'row',
     paddingHorizontal: THREAD_DESIGN.OUTER_SPACE,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingVertical: 12,
   },
   
-  // Avatar column (contains avatar + optional child line)
+  // Avatar column (contains avatar + line behind it)
   avatarColumn: {
-    alignItems: 'center',
+    width: THREAD_DESIGN.AVATAR_SIZE,
     marginRight: THREAD_DESIGN.AVATAR_GAP,
+    alignItems: 'center',
+  },
+  avatarWrapper: {
+    zIndex: 1, // Avatar above line
   },
   avatar: {
     width: THREAD_DESIGN.AVATAR_SIZE,
@@ -268,24 +271,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
   },
   
-  // Parent line (from post above)
-  parentLineContainer: {
-    paddingLeft: THREAD_DESIGN.OUTER_SPACE,
-    height: 12,
-  },
-  parentLine: {
+  // Continuous line container (absolute positioned behind avatar)
+  lineContainer: {
+    position: 'absolute',
+    left: (THREAD_DESIGN.AVATAR_SIZE - THREAD_DESIGN.LINE_WIDTH) / 2,
+    top: 0,
+    bottom: 0,
     width: THREAD_DESIGN.LINE_WIDTH,
-    height: '100%',
-    backgroundColor: '#333',
-    marginLeft: (THREAD_DESIGN.AVATAR_SIZE - THREAD_DESIGN.LINE_WIDTH) / 2,
+    alignItems: 'center',
   },
-  
-  // Child line (to post below)
-  childLine: {
+  // Line from top of post to avatar center
+  lineTop: {
+    width: THREAD_DESIGN.LINE_WIDTH,
+    height: THREAD_DESIGN.AVATAR_SIZE / 2,
+    backgroundColor: '#333',
+  },
+  // Line from avatar center to bottom of post
+  lineBottom: {
     width: THREAD_DESIGN.LINE_WIDTH,
     flex: 1,
-    minHeight: 12,
-    marginTop: 4,
     backgroundColor: '#333',
   },
   
