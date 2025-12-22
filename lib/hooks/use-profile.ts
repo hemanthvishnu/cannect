@@ -339,16 +339,20 @@ export function useFollowBlueskyUser() {
     mutationFn: async (blueskyUser: BlueskyUserInfo) => {
       if (!user) throw new Error("Not authenticated");
       
-      const { error } = await supabase.from("follows").insert({
+      // Don't include following_id at all - let it default to NULL
+      const { error, data } = await supabase.from("follows").insert({
         follower_id: user.id,
-        following_id: null, // External user - no local ID
         subject_did: blueskyUser.did,
         subject_handle: blueskyUser.handle,
         subject_display_name: blueskyUser.displayName || blueskyUser.handle,
         subject_avatar: blueskyUser.avatar,
-      } as any);
+      } as any).select();
       
-      if (error) throw error;
+      if (error) {
+        console.error("[useFollowBlueskyUser] Insert error:", error);
+        throw error;
+      }
+      console.log("[useFollowBlueskyUser] Follow created:", data);
       return blueskyUser.did;
     },
     onMutate: async (blueskyUser) => {
