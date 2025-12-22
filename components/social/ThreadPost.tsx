@@ -164,8 +164,13 @@ export const ThreadPost = memo(function ThreadPost({
           )}
 
           {/* Focused: Stats row */}
-          {isFocused && (post.reposts_count > 0 || post.likes_count > 0) && (
+          {isFocused && (post.reposts_count > 0 || post.likes_count > 0 || (post.replies_count ?? 0) > 0) && (
             <View style={styles.statsRow}>
+              {(post.replies_count ?? 0) > 0 && (
+                <Text style={styles.stat}>
+                  <Text style={styles.statCount}>{post.replies_count}</Text> {post.replies_count === 1 ? 'reply' : 'replies'}
+                </Text>
+              )}
               {post.reposts_count > 0 && (
                 <Text style={styles.stat}>
                   <Text style={styles.statCount}>{post.reposts_count}</Text> reposts
