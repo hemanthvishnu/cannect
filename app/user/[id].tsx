@@ -248,7 +248,10 @@ export default function UserProfileScreen() {
         onRepost={() => handleRepost(item)}
         onReply={() => router.push(`/post/${item.id}` as any)}
         onPress={() => router.push(`/post/${item.id}` as any)}
-        onProfilePress={() => router.push(`/user/${item.author?.username}` as any)}
+        onProfilePress={() => {
+          const identifier = (item as any).author?.handle || item.author?.username || item.author?.id;
+          if (identifier) router.push(`/user/${identifier}` as any);
+        }}
         onQuotedPostPress={(quotedPostId) => router.push(`/post/${quotedPostId}` as any)}
         // Show thread context for replies tab
         showThreadContext={activeTab === 'replies'}

@@ -83,42 +83,68 @@ const getProxyHeaders = () => ({
  * Unified Profile Resolver - handles both local and external users
  * 
  * Resolution order:
- * 1. Check profiles table by handle
- * 2. Check profiles table by username (for local users)
- * 3. If handle has a dot, fetch from Bluesky and upsert
+ * 1. Check if identifier is a UUID → direct lookup
+ * 2. Check profiles table by handle
+ * 3. Check profiles table by username (for local users)
+ * 4. If identifier has a dot, fetch from Bluesky and upsert
  */
-export function useResolveProfile(handle: string) {
+export function useResolveProfile(identifier: string) {
   return useQuery({
-    queryKey: ['profile', 'resolve', handle],
+    queryKey: ['profile', 'resolve', identifier],
     queryFn: async () => {
-      if (!handle) return null;
+      if (!identifier) return null;
+      
+      // Step 0: Check if identifier is a UUID (36 chars with dashes)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+      
+      if (isUUID) {
+        const { data: byId } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", identifier)
+          .maybeSingle();
+        
+        if (byId) {
+          return {
+            ...byId,
+            is_external: byId.is_local === false,
+          } as Profile & { is_external?: boolean };
+        }
+        return null; // UUID not found, don't try other lookups
+      }
       
       // Step 1: Try to find by handle (works for both local and external)
       const { data: byHandle } = await supabase
         .from("profiles")
         .select("*")
-        .eq("handle", handle)
+        .eq("handle", identifier)
         .maybeSingle();
       
       if (byHandle) {
-        return byHandle as Profile & { is_external?: boolean };
+        return {
+          ...byHandle,
+          is_external: byHandle.is_local === false,
+        } as Profile & { is_external?: boolean };
       }
       
       // Step 2: Try by username (for local users with Cannect usernames)
       const { data: byUsername } = await supabase
         .from("profiles")
         .select("*")
-        .eq("username", handle)
+        .eq("username", identifier)
         .maybeSingle();
       
       if (byUsername) {
-        return byUsername as Profile & { is_external?: boolean };
+        return {
+          ...byUsername,
+          is_external: byUsername.is_local === false,
+        } as Profile & { is_external?: boolean };
       }
       
-      // Step 3: If handle looks like a Bluesky handle (has a dot), fetch from Bluesky
-      if (handle.includes('.')) {
+      // Step 3: If identifier looks like a Bluesky handle (has a dot), fetch from Bluesky
+      if (identifier.includes('.')) {
         try {
-          const profileUrl = `${SUPABASE_URL}/functions/v1/bluesky-proxy?action=getProfile&handle=${encodeURIComponent(handle)}`;
+          const profileUrl = `${SUPABASE_URL}/functions/v1/bluesky-proxy?action=getProfile&handle=${encodeURIComponent(identifier)}`;
           const profileRes = await fetch(profileUrl, { headers: getProxyHeaders() });
           
           if (!profileRes.ok) {
@@ -163,7 +189,7 @@ export function useResolveProfile(handle: string) {
       // Profile not found
       return null;
     },
-    enabled: !!handle,
+    enabled: !!identifier,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: 1, // Only retry once for network errors
   });

@@ -137,12 +137,10 @@ export default function FeedScreen() {
     }
   }, [user, likeMutation, unlikeMutation, router]);
 
-  const handleProfilePress = (username: string, handle?: string) => {
-    // For federated profiles, navigate to federated profile page
-    if (handle && !handle.includes('cannect.space')) {
-      router.push(`/federated/${encodeURIComponent(handle)}` as any);
-    } else {
-      router.push(`/user/${username}` as any);
+  const handleProfilePress = (identifier: string) => {
+    // Unified routing - useResolveProfile handles UUID, handle, or username
+    if (identifier) {
+      router.push(`/user/${encodeURIComponent(identifier)}` as any);
     }
   };
 
@@ -293,10 +291,10 @@ export default function FeedScreen() {
                   onReply={() => handlePostPress(item.id)}
                   onRepost={() => handleRepost(item)}
                   onProfilePress={() => {
-                    const handle = (item as any).author?.handle || (item as any).author?.username;
-                    handleProfilePress(item.author?.username || '', isFederated ? handle : undefined);
+                    const identifier = (item as any).author?.handle || item.author?.username || item.author?.id;
+                    handleProfilePress(identifier);
                   }}
-                  onRepostedByPress={(username) => handleProfilePress(username)}
+                  onRepostedByPress={(identifier) => handleProfilePress(identifier)}
                   onPress={() => handlePostPress(item.id)}
                   onQuotedPostPress={(quotedPostId) => router.push(`/post/${quotedPostId}` as any)}
                   onMore={() => handleMore(item)}

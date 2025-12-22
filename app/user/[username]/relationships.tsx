@@ -75,7 +75,10 @@ export default function UserRelationshipsScreen() {
               <ProfileRow 
                 profile={item} 
                 showFollowButton={true}
-                onPress={() => router.push(`/user/${item.username}` as any)}
+                onPress={() => {
+                  const identifier = (item as any).handle || item.username || item.id;
+                  if (identifier) router.push(`/user/${identifier}` as any);
+                }}
               />
             )}
             onEndReached={() => hasNextPage && fetchNextPage()}

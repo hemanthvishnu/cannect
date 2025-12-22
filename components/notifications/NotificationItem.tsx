@@ -103,19 +103,17 @@ export const NotificationItem = memo(function NotificationItem({
   const handlePress = () => {
     if (notification.post_id) {
       router.push(`/post/${notification.post_id}` as any);
-    } else if (isExternal && notification.actor_handle) {
-      router.push(`/federated/${notification.actor_handle}` as any);
-    } else if (notification.actor?.username) {
-      router.push(`/user/${notification.actor.username}` as any);
+    } else {
+      // Use best available identifier
+      const identifier = notification.actor_handle || notification.actor?.username || notification.actor?.id;
+      if (identifier) router.push(`/user/${identifier}` as any);
     }
   };
 
   const handleAvatarPress = () => {
-    if (isExternal && notification.actor_handle) {
-      router.push(`/federated/${notification.actor_handle}` as any);
-    } else if (notification.actor?.username) {
-      router.push(`/user/${notification.actor.username}` as any);
-    }
+    // Use best available identifier
+    const identifier = notification.actor_handle || notification.actor?.username || notification.actor?.id;
+    if (identifier) router.push(`/user/${identifier}` as any);
   };
 
   return (

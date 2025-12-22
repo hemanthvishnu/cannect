@@ -45,7 +45,10 @@ export function PostCard({ post, showBorder = false }: PostCardProps) {
       <View className="flex-row gap-3">
         {/* Avatar */}
         <Pressable
-          onPress={() => router.push(`/user/${post.author.username}`)}
+          onPress={() => {
+            const identifier = (post.author as any).handle || post.author.username || post.author.id;
+            if (identifier) router.push(`/user/${identifier}` as any);
+          }}
         >
           <Avatar
             url={post.author.avatar_url}

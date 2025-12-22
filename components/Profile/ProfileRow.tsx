@@ -89,11 +89,11 @@ export function ProfileRow({
     if (onPress) {
       onPress();
     } else {
-      // Unified routing: use handle for external users, username for local
-      const identifier = isExternal 
-        ? ((profile as any).handle || profile.username)
-        : profile.username;
-      router.push(`/user/${identifier}` as any);
+      // Unified routing: use best available identifier (handle → username → id)
+      const identifier = (profile as any).handle || profile.username || profile.id;
+      if (identifier) {
+        router.push(`/user/${identifier}` as any);
+      }
     }
   };
 
