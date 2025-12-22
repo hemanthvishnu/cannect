@@ -36,7 +36,8 @@ export function ProfileRow({
   onPress 
 }: ProfileRowProps) {
   // Detect if this is an external Bluesky user
-  const isExternal = (profile as any).is_external === true;
+  // Check both legacy is_external flag and new is_local field from unified profiles
+  const isExternal = (profile as any).is_external === true || (profile as any).is_local === false;
   const effectiveIsFederated = isFederated || isExternal;
   
   // ✅ Use pre-enriched is_following if available, fallback to query
@@ -87,11 +88,12 @@ export function ProfileRow({
   const handlePress = () => {
     if (onPress) {
       onPress();
-    } else if (isExternal) {
-      // Navigate to federated profile page
-      router.push(`/federated/${profile.username}` as any);
-    } else if (!isFederated) {
-      router.push(`/user/${profile.username}` as any);
+    } else {
+      // Unified routing: use handle for external users, username for local
+      const identifier = isExternal 
+        ? ((profile as any).handle || profile.username)
+        : profile.username;
+      router.push(`/user/${identifier}` as any);
     }
   };
 

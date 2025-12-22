@@ -1,6 +1,6 @@
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { Share, Link as LinkIcon, Calendar } from "lucide-react-native";
+import { Share, Link as LinkIcon, Calendar, Globe2 } from "lucide-react-native";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ interface ProfileHeaderProps {
   isCurrentUser?: boolean;
   isFollowing?: boolean;
   isFollowPending?: boolean; // ✅ Loading state for follow button
+  isExternal?: boolean; // ✅ External Bluesky user
   onEditPress?: () => void;
   onFollowPress?: () => void;
   onSharePress?: () => void;
@@ -24,6 +25,7 @@ export function ProfileHeader({
   isCurrentUser,
   isFollowing,
   isFollowPending,
+  isExternal,
   onEditPress,
   onFollowPress,
   onSharePress,
@@ -109,9 +111,15 @@ export function ProfileHeader({
                 <Text className="text-white text-xs">✓</Text>
               </View>
             )}
+            {isExternal && (
+              <View className="flex-row items-center gap-1 bg-blue-500/20 px-2 py-0.5 rounded-full">
+                <Globe2 size={12} color="#3B82F6" />
+                <Text className="text-xs text-blue-500 font-medium">Bluesky</Text>
+              </View>
+            )}
           </View>
           <Text className="text-text-muted text-base">
-            @{profile.username}
+            @{(profile as any).handle || profile.username}
           </Text>
         </View>
 

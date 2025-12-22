@@ -4,43 +4,111 @@ import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import * as Haptics from "expo-haptics";
-import { RefreshCw } from "lucide-react-native";
-import { useProfileByUsername, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost, useFollowUser, useUnfollowUser, useIsFollowing, ProfileTab } from "@/lib/hooks";
+import { RefreshCw, Globe2 } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
+import { useResolveProfile, useUserPosts, useLikePost, useUnlikePost, useToggleRepost, useDeletePost, useFollowUser, useUnfollowUser, useIsFollowing, useFollowBlueskyUser, useUnfollowBlueskyUser, useIsFollowingDid, ProfileTab } from "@/lib/hooks";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
-import { SocialPost, RepostMenu, PostOptionsMenu } from "@/components/social";
+import { SocialPost, RepostMenu, PostOptionsMenu, BlueskyPost, type BlueskyPostData } from "@/components/social";
 import { MediaGridItem } from "@/components/Profile";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { SkeletonProfile, SkeletonCard } from "@/components/ui/Skeleton";
 import { useAuthStore } from "@/lib/stores";
 
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
+
+// Fetch external user's posts from Bluesky API
+async function fetchExternalPosts(handle: string): Promise<BlueskyPostData[]> {
+  if (!handle) return [];
+  
+  const url = `${SUPABASE_URL}/functions/v1/bluesky-proxy?action=getAuthorFeed&handle=${encodeURIComponent(handle)}&limit=30`;
+  const res = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "apikey": SUPABASE_ANON_KEY,
+    },
+  });
+  
+  const data = await res.json();
+  
+  return (data.feed || []).map((item: any) => {
+    const bskyPost = item.post;
+    return {
+      uri: bskyPost.uri,
+      cid: bskyPost.cid,
+      content: bskyPost.record?.text || "",
+      createdAt: bskyPost.record?.createdAt || bskyPost.indexedAt,
+      author: {
+        did: bskyPost.author.did,
+        handle: bskyPost.author.handle,
+        displayName: bskyPost.author.displayName || bskyPost.author.handle,
+        avatar: bskyPost.author.avatar,
+      },
+      likeCount: bskyPost.likeCount || 0,
+      repostCount: bskyPost.repostCount || 0,
+      replyCount: bskyPost.replyCount || 0,
+      images: bskyPost.embed?.images?.map((img: any) => img.fullsize) || [],
+    };
+  });
+}
+
 export default function UserProfileScreen() {
-  // The route param is named 'id' but it's actually a username
-  const { id: username } = useLocalSearchParams<{ id: string }>();
+  // The route param is named 'id' but it's actually a handle or username
+  const { id: handleOrUsername } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user: currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   
-  // Look up profile by username first
+  // Unified profile resolver - works for both local and external users
   const { 
     data: profile, 
     isLoading: isProfileLoading,
     isError: isProfileError,
     refetch: refetchProfile,
-  } = useProfileByUsername(username!);
-  // Then use the profile's actual UUID for posts with tab filtering
+  } = useResolveProfile(handleOrUsername!);
+  
+  // Check if this is an external (Bluesky) user
+  const isExternalUser = profile && profile.is_local === false;
+  
+  // For local users: fetch posts from our database
   const { 
-    data: postsData, 
+    data: localPostsData, 
     fetchNextPage, 
     hasNextPage, 
     isFetchingNextPage,
-    refetch: refetchPosts,
-    isRefetching,
-  } = useUserPosts(profile?.id ?? "", activeTab);
+    refetch: refetchLocalPosts,
+    isRefetching: isLocalPostsRefetching,
+  } = useUserPosts(
+    (!isExternalUser && profile?.id) ? profile.id : "", 
+    activeTab
+  );
   
-  // ✅ Platinum: Follow state and mutations
-  const { data: isFollowing } = useIsFollowing(profile?.id ?? "");
-  const followMutation = useFollowUser();
-  const unfollowMutation = useUnfollowUser();
+  // For external users: fetch posts from Bluesky API
+  const {
+    data: externalPosts,
+    refetch: refetchExternalPosts,
+    isRefetching: isExternalPostsRefetching,
+  } = useQuery({
+    queryKey: ["external-posts", profile?.handle],
+    queryFn: () => fetchExternalPosts(profile?.handle || ""),
+    enabled: isExternalUser && !!profile?.handle,
+    staleTime: 1000 * 60 * 5,
+  });
+  
+  // Follow state for local users
+  const { data: isFollowingLocal } = useIsFollowing(
+    (!isExternalUser && profile?.id) ? profile.id : ""
+  );
+  const followLocalMutation = useFollowUser();
+  const unfollowLocalMutation = useUnfollowUser();
+  
+  // Follow state for external users (by DID)
+  const { data: isFollowingExternal } = useIsFollowingDid(
+    isExternalUser ? (profile as any)?.did : ""
+  );
+  const followExternalMutation = useFollowBlueskyUser();
+  const unfollowExternalMutation = useUnfollowBlueskyUser();
   
   const likeMutation = useLikePost();
   const unlikeMutation = useUnlikePost();
@@ -55,9 +123,18 @@ export default function UserProfileScreen() {
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [optionsMenuPost, setOptionsMenuPost] = useState<any>(null);
 
-  const posts = postsData?.pages.flat() || [];
+  // Unified posts: local or external depending on user type
+  const localPosts = localPostsData?.pages.flat() || [];
+  const posts = isExternalUser ? (externalPosts || []) : localPosts;
+  const isRefetching = isExternalUser ? isExternalPostsRefetching : isLocalPostsRefetching;
   
-  // ✅ Platinum: Follow toggle with haptic feedback
+  // Unified follow state
+  const isFollowing = isExternalUser ? isFollowingExternal : isFollowingLocal;
+  const isFollowPending = isExternalUser 
+    ? (followExternalMutation.isPending || unfollowExternalMutation.isPending)
+    : (followLocalMutation.isPending || unfollowLocalMutation.isPending);
+  
+  // ✅ Unified Follow toggle with haptic feedback
   const handleFollowToggle = () => {
     if (!profile || currentUser?.id === profile.id) return;
     
@@ -66,14 +143,28 @@ export default function UserProfileScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     
-    if (isFollowing) {
-      unfollowMutation.mutate(profile.id);
+    if (isExternalUser) {
+      // External user - use Bluesky follow mutations
+      if (isFollowing) {
+        unfollowExternalMutation.mutate((profile as any).did);
+      } else {
+        followExternalMutation.mutate({
+          did: (profile as any).did,
+          handle: profile.handle || profile.username,
+          displayName: profile.display_name,
+          avatar: profile.avatar_url,
+        });
+      }
     } else {
-      // Pass DID for AT Protocol federation
-      followMutation.mutate({ 
-        targetUserId: profile.id, 
-        targetDid: (profile as any).did 
-      });
+      // Local user - use regular follow mutations
+      if (isFollowing) {
+        unfollowLocalMutation.mutate(profile.id);
+      } else {
+        followLocalMutation.mutate({ 
+          targetUserId: profile.id, 
+          targetDid: (profile as any).did 
+        });
+      }
     }
   };
   
@@ -131,11 +222,21 @@ export default function UserProfileScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     refetchProfile();
-    refetchPosts();
+    if (isExternalUser) {
+      refetchExternalPosts();
+    } else {
+      refetchLocalPosts();
+    }
   };
 
-  // Render item based on active tab
+  // Render item based on active tab and user type
   const renderItem = ({ item }: { item: any }) => {
+    // External users: render BlueskyPost component
+    if (isExternalUser) {
+      return <BlueskyPost post={item as BlueskyPostData} />;
+    }
+    
+    // Local users: render based on tab
     if (activeTab === 'media') {
       return <MediaGridItem item={item} />;
     }
@@ -175,23 +276,8 @@ export default function UserProfileScreen() {
   }
 
   // ✅ Error State with Retry
-  // If user not found and username looks like a Bluesky handle, redirect to federated page
+  // useResolveProfile now handles both local and Bluesky users
   if (isProfileError || !profile) {
-    // Bluesky handles contain a dot (e.g., bsky.app, user.bsky.social)
-    const looksLikeBlueskyHandle = username?.includes('.');
-    
-    if (looksLikeBlueskyHandle) {
-      // Redirect to federated profile page
-      router.replace(`/federated/${username}` as any);
-      return (
-        <SafeAreaView className="flex-1 bg-background items-center justify-center" edges={["top"]}>
-          <Stack.Screen options={{ title: "Profile", headerBackTitle: "Back" }} />
-          <ActivityIndicator size="large" color="#10B981" />
-          <Text className="text-text-muted mt-4">Loading Bluesky profile...</Text>
-        </SafeAreaView>
-      );
-    }
-    
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center px-6" edges={["top"]}>
         <Stack.Screen options={{ title: "Profile", headerBackTitle: "Back" }} />
@@ -220,48 +306,64 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
-      <Stack.Screen options={{ title: `@${profile.username}`, headerBackTitle: "Back" }} />
+      <Stack.Screen options={{ title: `@${profile.handle || profile.username}`, headerBackTitle: "Back" }} />
       
       {/* ✅ Platinum: Header stays mounted, only list content changes */}
       <ProfileHeader 
         profile={profile!} 
-        isCurrentUser={currentUser?.id === profile!.id}
+        isCurrentUser={!isExternalUser && currentUser?.id === profile!.id}
         isFollowing={isFollowing ?? false}
-        isFollowPending={followMutation.isPending || unfollowMutation.isPending}
+        isFollowPending={isFollowPending}
         onFollowPress={handleFollowToggle}
-        onFollowersPress={() => router.push({ 
-          pathname: `/user/${username}/relationships` as any,
+        onFollowersPress={() => !isExternalUser && router.push({ 
+          pathname: `/user/${handleOrUsername}/relationships` as any,
           params: { type: 'followers' }
         })}
-        onFollowingPress={() => router.push({ 
-          pathname: `/user/${username}/relationships` as any,
+        onFollowingPress={() => !isExternalUser && router.push({ 
+          pathname: `/user/${handleOrUsername}/relationships` as any,
           params: { type: 'following' }
         })}
+        isExternal={isExternalUser}
       />
       
-      {/* ✅ Platinum Tab Bar - outside FlashList for stability */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ProfileTab)}>
-        <TabsList>
-          <TabsTrigger value="posts">Posts</TabsTrigger>
-          <TabsTrigger value="replies">Replies</TabsTrigger>
-          <TabsTrigger value="media">Media</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* ✅ Tabs - only show for local users (external users just show posts) */}
+      {!isExternalUser && (
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ProfileTab)}>
+          <TabsList>
+            <TabsTrigger value="posts">Posts</TabsTrigger>
+            <TabsTrigger value="replies">Replies</TabsTrigger>
+            <TabsTrigger value="media">Media</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+      
+      {/* External user badge/header */}
+      {isExternalUser && (
+        <View className="flex-row items-center gap-2 px-4 py-2 bg-blue-500/10 border-b border-border">
+          <Globe2 size={14} color="#3B82F6" />
+          <Text className="text-blue-500 text-sm font-medium">
+            Bluesky User • Posts from the global network
+          </Text>
+        </View>
+      )}
       
       <View style={{ flex: 1, minHeight: 2 }}>
         <FlashList
-          key={activeTab === 'media' ? 'grid' : 'list'}
+          key={isExternalUser ? 'external' : (activeTab === 'media' ? 'grid' : 'list')}
           data={posts}
-          keyExtractor={(item, index) => {
-            // Create truly unique key for reposts vs originals
+          keyExtractor={(item: any, index) => {
+            // External posts use URI, local posts use ID
+            if (isExternalUser) {
+              return item.uri || `external-${index}`;
+            }
             const isRepost = item.type === 'repost' || item.is_repost;
             const reposterId = isRepost ? item.user_id : null;
             return `${activeTab}-${item.id}-${reposterId || 'orig'}-${index}`;
           }}
-          numColumns={activeTab === 'media' ? 3 : 1}
-          estimatedItemSize={activeTab === 'media' ? 120 : 200}
+          numColumns={activeTab === 'media' && !isExternalUser ? 3 : 1}
+          estimatedItemSize={activeTab === 'media' && !isExternalUser ? 120 : 200}
           renderItem={renderItem}
-          onEndReached={() => hasNextPage && fetchNextPage()}
+          onEndReached={() => !isExternalUser && hasNextPage && fetchNextPage()}
           
           // ✅ Pull-to-refresh
           refreshing={isRefetching}
