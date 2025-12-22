@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { BadgeCheck, Globe2 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { Avatar } from "@/components/ui/Avatar";
-import { useFollowUser, useUnfollowUser, useIsFollowing } from "@/lib/hooks";
+import { useFollowUser, useUnfollowUser, useIsFollowing, useUnfollowBlueskyUser, useIsFollowingDid } from "@/lib/hooks";
 import type { Profile } from "@/lib/types/database";
 
 // Extended profile type with pre-enriched is_following
@@ -11,8 +11,19 @@ interface EnrichedProfile extends Profile {
   is_following?: boolean;
 }
 
+// External Bluesky user profile
+interface ExternalProfile {
+  id: string; // DID
+  did: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_external: true;
+  is_following?: boolean;
+}
+
 interface ProfileRowProps {
-  profile: EnrichedProfile | any; // Allow federated profiles too
+  profile: EnrichedProfile | ExternalProfile | any;
   showFollowButton?: boolean;
   isFederated?: boolean;
   onPress?: () => void;
@@ -24,23 +35,42 @@ export function ProfileRow({
   isFederated = false,
   onPress 
 }: ProfileRowProps) {
+  // Detect if this is an external Bluesky user
+  const isExternal = (profile as any).is_external === true;
+  const effectiveIsFederated = isFederated || isExternal;
+  
   // ✅ Use pre-enriched is_following if available, fallback to query
   const hasEnrichedFollowStatus = profile.is_following !== undefined;
   const { data: queryIsFollowing } = useIsFollowing(
-    hasEnrichedFollowStatus || isFederated ? "" : profile.id
+    hasEnrichedFollowStatus || effectiveIsFederated ? "" : profile.id
   );
-  const isFollowing = hasEnrichedFollowStatus ? profile.is_following : queryIsFollowing;
+  
+  // For external users, check if we're following their DID
+  const { data: isFollowingDid } = useIsFollowingDid(
+    isExternal && !hasEnrichedFollowStatus ? profile.did : ""
+  );
+  
+  const isFollowing = hasEnrichedFollowStatus 
+    ? profile.is_following 
+    : (isExternal ? isFollowingDid : queryIsFollowing);
   
   const followUser = useFollowUser();
   const unfollowUser = useUnfollowUser();
-  const isPending = followUser.isPending || unfollowUser.isPending;
+  const unfollowBlueskyUser = useUnfollowBlueskyUser();
+  const isPending = followUser.isPending || unfollowUser.isPending || unfollowBlueskyUser.isPending;
 
   const handleFollow = () => {
-    if (isFederated) return; // Can't follow federated users directly
-    
     // ✅ Haptic feedback on follow/unfollow
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    if (isExternal) {
+      // External user - only unfollow is supported from this view
+      if (isFollowing) {
+        unfollowBlueskyUser.mutate(profile.did);
+      }
+      return;
     }
     
     if (isFollowing) {
@@ -57,10 +87,12 @@ export function ProfileRow({
   const handlePress = () => {
     if (onPress) {
       onPress();
+    } else if (isExternal) {
+      // Navigate to federated profile page
+      router.push(`/federated/${profile.username}` as any);
     } else if (!isFederated) {
       router.push(`/user/${profile.username}` as any);
     }
-    // Federated profiles need custom handling via onPress
   };
 
   const displayName = profile.display_name || profile.username;
@@ -99,14 +131,15 @@ export function ProfileRow({
             {profile.bio}
           </Text>
         )}
-        {isFederated && (profile.followers_count > 0 || profile.following_count > 0) && (
+        {effectiveIsFederated && (profile.followers_count > 0 || profile.following_count > 0) && (
           <Text className="text-text-muted text-xs mt-1">
             {profile.followers_count?.toLocaleString()} followers · {profile.following_count?.toLocaleString()} following
           </Text>
         )}
       </View>
 
-      {showFollowButton && !isFederated && (
+      {/* Follow button for local users */}
+      {showFollowButton && !effectiveIsFederated && (
         <Pressable
           onPress={handleFollow}
           disabled={isPending}
@@ -133,9 +166,32 @@ export function ProfileRow({
         </Pressable>
       )}
 
-      {isFederated && (
+      {/* External Bluesky users - show Following button (tap to unfollow) */}
+      {isExternal && isFollowing && (
+        <Pressable
+          onPress={handleFollow}
+          disabled={isPending}
+          className="px-4 py-2 rounded-full min-w-[90px] items-center justify-center border border-border"
+        >
+          {isPending ? (
+            <ActivityIndicator size="small" color="#6B7280" />
+          ) : (
+            <Text className="font-medium text-text-primary">Following</Text>
+          )}
+        </Pressable>
+      )}
+
+      {/* Non-external federated profiles just show View button */}
+      {isFederated && !isExternal && (
         <View className="px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10">
           <Text className="text-xs font-medium text-blue-500">View</Text>
+        </View>
+      )}
+      
+      {/* External badge */}
+      {isExternal && !isFollowing && (
+        <View className="px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10">
+          <Text className="text-xs font-medium text-blue-500">Bluesky</Text>
         </View>
       )}
     </Pressable>

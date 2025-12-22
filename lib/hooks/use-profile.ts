@@ -541,7 +541,18 @@ export function useSearchUsers(query: string) {
   });
 }
 
+// Type for external follow display (virtual profile)
+interface ExternalFollowProfile {
+  id: string; // Use DID as id for external users
+  did: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_external: true;
+}
+
 // ✅ Diamond Standard: Infinite scrolling social graph discovery
+// Now supports both local and external (Bluesky) follows
 export function useUserRelationships(userId: string, type: 'followers' | 'following') {
   const { user: currentUser } = useAuthStore();
 
@@ -551,41 +562,95 @@ export function useUserRelationships(userId: string, type: 'followers' | 'follow
       const from = pageParam * 20;
       const to = from + 19;
 
-      const matchColumn = type === 'followers' ? 'following_id' : 'follower_id';
-      const selectColumn = type === 'followers' 
-        ? 'follower:profiles!follower_id(*)' 
-        : 'following:profiles!following_id(*)';
-
-      const { data, error } = await supabase
-        .from('follows')
-        .select(`id, ${selectColumn}`)
-        .eq(matchColumn, userId)
-        .range(from, to);
-
-      if (error) throw error;
-
-      // Extract the profile objects from the join
-      const profiles = data.map((item: any) => 
-        type === 'followers' ? item.follower : item.following
-      );
-      
-      // Enrich with "is_following" status for the current viewer
-      if (currentUser?.id && profiles.length > 0) {
-        const profileIds = profiles.map((p: any) => p.id);
-        const { data: myFollows } = await supabase
+      if (type === 'followers') {
+        // Followers are always local users
+        const { data, error } = await supabase
           .from('follows')
-          .select('following_id')
-          .eq('follower_id', currentUser.id)
-          .in('following_id', profileIds);
-          
-        const followSet = new Set((myFollows as any[])?.map(f => f.following_id) || []);
-        return profiles.map((p: any) => ({
-          ...p,
-          is_following: followSet.has(p.id)
-        }));
-      }
+          .select(`id, follower:profiles!follower_id(*)`)
+          .eq('following_id', userId)
+          .range(from, to);
 
-      return profiles;
+        if (error) throw error;
+
+        const profiles = data.map((item: any) => item.follower);
+        
+        // Enrich with "is_following" status
+        if (currentUser?.id && profiles.length > 0) {
+          const profileIds = profiles.map((p: any) => p.id);
+          const { data: myFollows } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', currentUser.id)
+            .in('following_id', profileIds);
+            
+          const followSet = new Set((myFollows as any[])?.map(f => f.following_id) || []);
+          return profiles.map((p: any) => ({
+            ...p,
+            is_following: followSet.has(p.id)
+          }));
+        }
+
+        return profiles;
+      } else {
+        // Following can include both local and external users
+        const { data, error } = await supabase
+          .from('follows')
+          .select(`
+            id, 
+            following_id,
+            subject_did,
+            subject_handle,
+            subject_display_name,
+            subject_avatar,
+            following:profiles!following_id(*)
+          `)
+          .eq('follower_id', userId)
+          .range(from, to);
+
+        if (error) throw error;
+
+        // Transform to unified profile format
+        const profiles = data.map((item: any) => {
+          if (item.following_id && item.following) {
+            // Local user
+            return item.following;
+          } else if (item.subject_did) {
+            // External Bluesky user
+            return {
+              id: item.subject_did,
+              did: item.subject_did,
+              username: item.subject_handle || item.subject_did,
+              display_name: item.subject_display_name,
+              avatar_url: item.subject_avatar,
+              is_external: true,
+            } as ExternalFollowProfile;
+          }
+          return null;
+        }).filter(Boolean);
+        
+        // Enrich local profiles with "is_following" status (for viewer)
+        if (currentUser?.id && profiles.length > 0) {
+          const localProfileIds = profiles
+            .filter((p: any) => !p.is_external)
+            .map((p: any) => p.id);
+            
+          if (localProfileIds.length > 0) {
+            const { data: myFollows } = await supabase
+              .from('follows')
+              .select('following_id')
+              .eq('follower_id', currentUser.id)
+              .in('following_id', localProfileIds);
+              
+            const followSet = new Set((myFollows as any[])?.map(f => f.following_id) || []);
+            return profiles.map((p: any) => ({
+              ...p,
+              is_following: p.is_external ? true : followSet.has(p.id) // External users are always "followed" if in list
+            }));
+          }
+        }
+
+        return profiles;
+      }
     },
     getNextPageParam: (lastPage, allPages) => 
       lastPage.length === 20 ? allPages.length : undefined,
