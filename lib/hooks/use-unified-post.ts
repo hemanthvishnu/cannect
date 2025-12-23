@@ -254,3 +254,25 @@ export function useUnifiedPostWithState(post: UnifiedPost): UnifiedPost {
     },
   };
 }
+
+/**
+ * Wrapper component that enriches a post with viewer state
+ * Use this in post detail views to get correct like/repost state
+ */
+export function useEnrichedPost(post: UnifiedPost | null | undefined): UnifiedPost | null {
+  const uri = post?.isExternal ? post.uri : "";
+  const { data: isLiked } = useHasLikedBlueskyPost(uri);
+  const { data: isReposted } = useHasRepostedBlueskyPost(uri);
+  
+  if (!post) return null;
+  if (!post.isExternal) return post;
+  
+  return {
+    ...post,
+    viewer: {
+      ...post.viewer,
+      isLiked: isLiked ?? post.viewer.isLiked,
+      isReposted: isReposted ?? post.viewer.isReposted,
+    },
+  };
+}

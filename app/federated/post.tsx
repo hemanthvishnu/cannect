@@ -5,7 +5,7 @@
  * Uses URI passed via query params or global search params.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, memo } from "react";
 import { View, Text, ScrollView, RefreshControl, Pressable, Share, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,10 +13,10 @@ import { ArrowLeft, ExternalLink } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { getBlueskyPostThread, type FederatedPost } from "@/lib/services/bluesky";
-import { UnifiedPostCard } from "@/components/social/UnifiedPostCard";
+import { UnifiedPostCard, type UnifiedPostCardProps } from "@/components/social/UnifiedPostCard";
 import { ReplyBar } from "@/components/social/ReplyBar";
 import { fromBlueskyPost, type UnifiedPost } from "@/lib/types/unified-post";
-import { useReplyToBlueskyPost } from "@/lib/hooks";
+import { useReplyToBlueskyPost, useEnrichedPost } from "@/lib/hooks";
 import type { BlueskyPostData } from "@/components/social/BlueskyPost";
 
 // Convert FederatedPost to BlueskyPostData format for the adapter
@@ -38,6 +38,25 @@ function toBlueskyPostData(post: FederatedPost): BlueskyPostData {
     images: post.media_urls,
   };
 }
+
+/**
+ * Wrapper component that enriches a Bluesky post with local viewer state.
+ * This ensures the like/repost buttons show the correct state from our database.
+ */
+interface EnrichedPostCardProps extends Omit<UnifiedPostCardProps, 'post'> {
+  federatedPost: FederatedPost;
+}
+
+const EnrichedPostCard = memo(function EnrichedPostCard({ federatedPost, ...props }: EnrichedPostCardProps) {
+  // Convert to unified format
+  const basePost = fromBlueskyPost(toBlueskyPostData(federatedPost));
+  // Enrich with local viewer state (checks our likes/reposts tables)
+  const enrichedPost = useEnrichedPost(basePost);
+  
+  if (!enrichedPost) return null;
+  
+  return <UnifiedPostCard post={enrichedPost} {...props} />;
+});
 
 export default function FederatedPostScreen() {
   const { uri } = useLocalSearchParams<{ uri: string }>();
@@ -176,8 +195,8 @@ export default function FederatedPostScreen() {
           {/* Parent post (if replying to something) */}
           {thread.parent && (
             <View className="opacity-70">
-              <UnifiedPostCard
-                post={fromBlueskyPost(toBlueskyPostData(thread.parent))}
+              <EnrichedPostCard
+                federatedPost={thread.parent}
                 onShare={handleShare}
               />
               <View className="h-4 ml-8 w-0.5 bg-border" />
@@ -185,8 +204,8 @@ export default function FederatedPostScreen() {
           )}
 
           {/* Main post */}
-          <UnifiedPostCard
-            post={fromBlueskyPost(toBlueskyPostData(thread.post))}
+          <EnrichedPostCard
+            federatedPost={thread.post}
             onShare={handleShare}
           />
 
@@ -203,8 +222,8 @@ export default function FederatedPostScreen() {
 
               {thread.replies.map((reply) => (
                 <View key={reply.uri} className="border-t border-border/50">
-                  <UnifiedPostCard
-                    post={fromBlueskyPost(toBlueskyPostData(reply))}
+                  <EnrichedPostCard
+                    federatedPost={reply}
                     onShare={handleShare}
                   />
                 </View>
