@@ -123,6 +123,77 @@ async function syncProfileCounts(profile: Profile): Promise<void> {
 }
 
 /**
+ * Lazy sync: Sync followers/following list from Bluesky
+ * Fetches the list and upserts profiles + follow relationships
+ */
+async function syncFollowsList(
+  profile: Profile, 
+  type: 'followers' | 'following'
+): Promise<void> {
+  // Only sync if profile has a DID (is federated)
+  if (!profile.did) return;
+  
+  try {
+    const action = type === 'followers' ? 'getFollowers' : 'getFollows';
+    const listUrl = `${SUPABASE_URL}/functions/v1/bluesky-proxy?action=${action}&actor=${encodeURIComponent(profile.did)}&limit=100`;
+    const res = await fetch(listUrl, { headers: getProxyHeaders() });
+    
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    const users = type === 'followers' ? data.followers : data.follows;
+    
+    if (!users || !Array.isArray(users)) return;
+    
+    // Process each user
+    for (const user of users) {
+      try {
+        // Upsert the external profile
+        const { data: profileId } = await supabase.rpc('upsert_external_profile', {
+          p_did: user.did,
+          p_handle: user.handle,
+          p_display_name: user.displayName || user.handle,
+          p_avatar_url: user.avatar || null,
+          p_bio: user.description || null,
+          p_followers_count: user.followersCount || 0,
+          p_following_count: user.followsCount || 0,
+          p_posts_count: user.postsCount || 0,
+        });
+        
+        if (profileId) {
+          // Create the follow relationship
+          if (type === 'followers') {
+            // This user follows the profile we're viewing
+            await supabase
+              .from('follows')
+              .upsert({
+                follower_id: profileId,
+                following_id: profile.id,
+                subject_did: profile.did,
+              }, { onConflict: 'follower_id,following_id', ignoreDuplicates: true });
+          } else {
+            // The profile we're viewing follows this user
+            await supabase
+              .from('follows')
+              .upsert({
+                follower_id: profile.id,
+                following_id: profileId,
+                subject_did: user.did,
+              }, { onConflict: 'follower_id,following_id', ignoreDuplicates: true });
+          }
+        }
+      } catch (err) {
+        // Continue with other users if one fails
+        console.debug('[syncFollowsList] User sync error:', err);
+      }
+    }
+  } catch (err) {
+    // Silently fail - this is just an optimization
+    console.debug('[syncFollowsList] Error:', err);
+  }
+}
+
+/**
  * Unified Profile Resolver - handles both local and external users
  * 
  * Resolution order:
@@ -772,6 +843,20 @@ export function useUserRelationships(userId: string, type: 'followers' | 'follow
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * 20;
       const to = from + 19;
+
+      // On first page, trigger lazy sync for federated users
+      if (pageParam === 0) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        
+        if (profile?.did) {
+          // Fire and forget - sync followers/following from Bluesky
+          syncFollowsList(profile as Profile, type);
+        }
+      }
 
       const matchColumn = type === 'followers' ? 'following_id' : 'follower_id';
       const selectColumn = type === 'followers' 

@@ -82,6 +82,18 @@ serve(async (req) => {
         if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
         break;
 
+      case "getFollowers":
+        const followersActor = url.searchParams.get("actor") || url.searchParams.get("handle") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.graph.getFollowers?actor=${encodeURIComponent(followersActor)}&limit=${limit}`;
+        if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        break;
+
+      case "getFollows":
+        const followsActor = url.searchParams.get("actor") || url.searchParams.get("handle") || "";
+        bskyUrl = `${BSKY_PUBLIC_API}/app.bsky.graph.getFollows?actor=${encodeURIComponent(followsActor)}&limit=${limit}`;
+        if (cursor) bskyUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        break;
+
       case "xrpc":
         // ✅ Gold Standard Resilience: Generic XRPC Passthrough
         const path = url.searchParams.get("path") || url.searchParams.get("endpoint") || "";
