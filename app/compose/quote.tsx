@@ -12,7 +12,7 @@ export default function QuotePostScreen() {
   const router = useRouter();
   const { postId, externalData } = useLocalSearchParams<{ postId?: string; externalData?: string }>();
   const [content, setContent] = useState("");
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const repostMutation = useRepost();
   
   // For internal posts, fetch from Supabase
@@ -79,11 +79,18 @@ export default function QuotePostScreen() {
         <View className="flex-1 px-4 pt-4">
           {/* User Input */}
           <View className="flex-row mb-4">
-            <View className="w-11 h-11 rounded-full bg-primary items-center justify-center">
-              <Text className="text-white text-lg font-semibold">
-                {user?.email?.[0]?.toUpperCase() || "U"}
-              </Text>
-            </View>
+            {profile?.avatar_url ? (
+              <Image 
+                source={{ uri: profile.avatar_url }} 
+                style={{ width: 44, height: 44, borderRadius: 22 }}
+              />
+            ) : (
+              <View className="w-11 h-11 rounded-full bg-primary items-center justify-center">
+                <Text className="text-white text-lg font-semibold">
+                  {profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                </Text>
+              </View>
+            )}
             <TextInput
               placeholder="Add your thoughts..."
               placeholderTextColor="#6B6B6B"
