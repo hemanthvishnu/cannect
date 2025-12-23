@@ -1667,12 +1667,42 @@ export function useLikeBlueskyPost() {
       const previousValue = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, true);
       
-      return { previousValue, queryKey };
+      // Optimistically update like count in all bluesky-thread caches
+      // (the post might be in any thread as main post or reply)
+      const previousThreads: Map<string, any> = new Map();
+      queryClient.getQueriesData({ queryKey: ["bluesky-thread"] }).forEach(([key, data]: [any, any]) => {
+        if (!data) return;
+        const keyStr = JSON.stringify(key);
+        previousThreads.set(keyStr, data);
+        
+        // Update main post if it matches
+        if (data.post?.uri === postRef.uri) {
+          queryClient.setQueryData(key, { 
+            ...data, 
+            post: { ...data.post, likes_count: (data.post.likes_count || 0) + 1 } 
+          });
+        }
+        // Update replies if one matches
+        else if (data.replies?.some((r: any) => r.uri === postRef.uri)) {
+          queryClient.setQueryData(key, {
+            ...data,
+            replies: data.replies.map((r: any) =>
+              r.uri === postRef.uri ? { ...r, likes_count: (r.likes_count || 0) + 1 } : r
+            ),
+          });
+        }
+      });
+      
+      return { previousValue, queryKey, previousThreads };
     },
     onError: (err, postRef, context) => {
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previousValue);
       }
+      // Restore all thread caches on error
+      context?.previousThreads?.forEach((data, keyStr) => {
+        queryClient.setQueryData(JSON.parse(keyStr), data);
+      });
       emitFederationError({ action: 'like' });
     },
     onSettled: (uri) => {
@@ -1708,12 +1738,41 @@ export function useUnlikeBlueskyPost() {
       const previousValue = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, false);
       
-      return { previousValue, queryKey };
+      // Optimistically update like count in all bluesky-thread caches
+      const previousThreads: Map<string, any> = new Map();
+      queryClient.getQueriesData({ queryKey: ["bluesky-thread"] }).forEach(([key, data]: [any, any]) => {
+        if (!data) return;
+        const keyStr = JSON.stringify(key);
+        previousThreads.set(keyStr, data);
+        
+        // Update main post if it matches
+        if (data.post?.uri === subjectUri) {
+          queryClient.setQueryData(key, { 
+            ...data, 
+            post: { ...data.post, likes_count: Math.max(0, (data.post.likes_count || 0) - 1) } 
+          });
+        }
+        // Update replies if one matches
+        else if (data.replies?.some((r: any) => r.uri === subjectUri)) {
+          queryClient.setQueryData(key, {
+            ...data,
+            replies: data.replies.map((r: any) =>
+              r.uri === subjectUri ? { ...r, likes_count: Math.max(0, (r.likes_count || 0) - 1) } : r
+            ),
+          });
+        }
+      });
+      
+      return { previousValue, queryKey, previousThreads };
     },
     onError: (err, subjectUri, context) => {
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previousValue);
       }
+      // Restore all thread caches on error
+      context?.previousThreads?.forEach((data, keyStr) => {
+        queryClient.setQueryData(JSON.parse(keyStr), data);
+      });
       emitFederationError({ action: 'unlike' });
     },
     onSettled: (uri) => {
