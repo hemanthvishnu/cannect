@@ -31,7 +31,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 
-import { useCreatePost, useMediaUpload, usePWAPersistence, useNetworkStatus, useReplyToBlueskyPost } from "@/lib/hooks";
+import { useCreatePost, useMediaUpload, usePWAPersistence, useNetworkStatus, useReplyToBlueskyPost, useThreadReply } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -39,27 +39,33 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 8;
 
 export default function ComposeScreen() {
-  // Reply params (passed from BlueskyPost component)
+  // Reply params - supports both local and external posts
   const { 
     replyToUri, 
     replyToCid, 
     replyToAuthor, 
     replyToHandle,
-    replyToContent 
+    replyToContent,
+    replyToPostId, // Local post ID for replies
   } = useLocalSearchParams<{
     replyToUri?: string;
     replyToCid?: string;
     replyToAuthor?: string;
     replyToHandle?: string;
     replyToContent?: string;
+    replyToPostId?: string;
   }>();
   
-  const isReply = !!(replyToUri && replyToCid);
+  // Determine if this is a reply (external or local)
+  const isExternalReply = !!(replyToUri && replyToCid);
+  const isLocalReply = !!replyToPostId;
+  const isReply = isExternalReply || isLocalReply;
   
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const createPost = useCreatePost();
   const replyToBluesky = useReplyToBlueskyPost();
+  const replyToLocal = useThreadReply(replyToPostId || "");
   const { user, profile, isAuthenticated } = useAuthStore();
   const media = useMediaUpload(4);
   
@@ -124,8 +130,8 @@ export default function ComposeScreen() {
     setError(null);
     
     try {
-      // Handle reply to Bluesky post
-      if (isReply && replyToUri && replyToCid) {
+      // Handle reply to external Bluesky post
+      if (isExternalReply && replyToUri && replyToCid) {
         await replyToBluesky.mutateAsync({
           content: content.trim(),
           parent: {
@@ -140,6 +146,25 @@ export default function ComposeScreen() {
         }
         
         setContent("");
+        await clearDraft();
+        router.back();
+        return;
+      }
+      
+      // Handle reply to local Cannect post
+      if (isLocalReply && replyToPostId) {
+        await replyToLocal.mutateAsync({
+          content: content.trim(),
+          parentId: replyToPostId,
+        });
+        
+        // Success feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        
+        setContent("");
+        await clearDraft();
         router.back();
         return;
       }
@@ -188,7 +213,7 @@ export default function ComposeScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     }
-  }, [content, media, user, isAuthenticated, createPost]);
+  }, [content, media, user, isAuthenticated, createPost, replyToBluesky, replyToLocal, isExternalReply, isLocalReply, replyToUri, replyToCid, replyToPostId, clearDraft]);
 
   // =====================================================
   // Media Grid Layout Calculator
@@ -221,7 +246,7 @@ export default function ComposeScreen() {
   const charCount = content.length;
   const maxChars = 300;
   const isOverLimit = charCount > maxChars;
-  const isPending = createPost.isPending || replyToBluesky.isPending;
+  const isPending = createPost.isPending || replyToBluesky.isPending || replyToLocal.isPending;
   const canPost = (content.trim() || media.hasMedia) && !isOverLimit && !media.isUploading && !isPending;
 
   // =====================================================

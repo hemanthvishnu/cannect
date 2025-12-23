@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { Send, X } from "lucide-react-native";
+import { Send, X, LogIn } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useAuthStore } from "@/lib/stores";
 import { BLURHASH_PLACEHOLDERS } from "@/lib/utils/assets";
@@ -35,7 +36,8 @@ export function ReplyBar({
   initialText = "",
 }: ReplyBarProps) {
   const [text, setText] = useState(initialText);
-  const { user, profile } = useAuthStore();
+  const { user, profile, isAuthenticated } = useAuthStore();
+  const router = useRouter();
 
   // Update text when initialText changes (e.g., switching reply targets)
   React.useEffect(() => {
@@ -54,10 +56,31 @@ export function ReplyBar({
     setText("");
   };
 
+  // Handle login navigation
+  const handleLogin = () => {
+    router.push("/login" as any);
+  };
+
   const avatarUrl = profile?.avatar_url || 
     `https://ui-avatars.com/api/?name=${user?.email?.[0] || "U"}&background=10B981&color=fff`;
 
   const hasContent = text.trim().length > 0;
+
+  // Show login prompt if not authenticated
+  if (!isAuthenticated || !user) {
+    return (
+      <View className="border-t border-border bg-background px-4 py-4">
+        <Pressable 
+          onPress={handleLogin}
+          className="flex-row items-center justify-center gap-2 bg-primary rounded-full py-3"
+          style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+        >
+          <LogIn size={18} color="white" />
+          <Text className="text-white font-semibold">Log in to reply</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
