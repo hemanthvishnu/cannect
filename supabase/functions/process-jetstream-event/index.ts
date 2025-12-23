@@ -13,8 +13,6 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const CANNECT_DOMAIN = "cannect.space";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -62,7 +60,7 @@ async function findPostByUri(uri: string): Promise<{ id: string; user_id: string
   const { data, error } = await supabase
     .from("posts")
     .select("id, user_id, content")
-    .eq("atproto_uri", uri)
+    .eq("at_uri", uri)
     .maybeSingle();
   
   if (error) {
@@ -127,8 +125,8 @@ async function createNotification(params: {
 
 async function processLike(event: JetstreamEvent) {
   const subjectUri = (event.record as { subject?: { uri?: string } })?.subject?.uri;
-  if (!subjectUri || !subjectUri.includes(CANNECT_DOMAIN)) {
-    return { created: false, reason: "not cannect content" };
+  if (!subjectUri) {
+    return { created: false, reason: "no subject uri" };
   }
   
   // Find the post being liked
@@ -153,8 +151,8 @@ async function processLike(event: JetstreamEvent) {
 
 async function processRepost(event: JetstreamEvent) {
   const subjectUri = (event.record as { subject?: { uri?: string } })?.subject?.uri;
-  if (!subjectUri || !subjectUri.includes(CANNECT_DOMAIN)) {
-    return { created: false, reason: "not cannect content" };
+  if (!subjectUri) {
+    return { created: false, reason: "no subject uri" };
   }
   
   // Find the post being reposted
@@ -188,9 +186,9 @@ async function processPost(event: JetstreamEvent) {
     };
   };
   
-  // Check for reply to Cannect post
+  // Check for reply to Cannect post (consumer already filtered for Cannect DIDs)
   const parentUri = record?.reply?.parent?.uri;
-  if (parentUri && parentUri.includes(CANNECT_DOMAIN)) {
+  if (parentUri) {
     const post = await findPostByUri(parentUri);
     if (post) {
       const actor = await findUserByDid(event.actorDid);
@@ -207,7 +205,7 @@ async function processPost(event: JetstreamEvent) {
   
   // Check for quote of Cannect post
   const quotedUri = record?.embed?.record?.uri;
-  if (quotedUri && quotedUri.includes(CANNECT_DOMAIN)) {
+  if (quotedUri) {
     const post = await findPostByUri(quotedUri);
     if (post) {
       const actor = await findUserByDid(event.actorDid);
