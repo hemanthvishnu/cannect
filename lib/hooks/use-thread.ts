@@ -27,6 +27,7 @@ import {
   type ThreadSort,
   type ThreadView as ThreadViewOption,
 } from './use-thread-preferences';
+import * as atprotoAgent from '@/lib/services/atproto-agent';
 
 const POST_SELECT = `
   *,
@@ -307,10 +308,11 @@ async function fetchRepliesFlat(
 
 /**
  * Create a reply in a thread with optimistic update
+ * PDS-first for federated users - replies go to PDS then mirror to DB
  */
 export function useThreadReply(threadPostId: string) {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ content, parentId }: { content: string; parentId?: string }) => {
@@ -334,6 +336,27 @@ export function useThreadReply(threadPostId: string) {
       const threadRootUri = parentPost?.thread_root_uri || parentPost?.at_uri || null;
       const threadRootCid = parentPost?.thread_root_cid || parentPost?.at_cid || null;
 
+      // PDS-first: If user is federated AND parent has AT URI, use atproto-agent
+      if (profile?.did && threadParentUri && threadParentCid) {
+        console.log('[useThreadReply] PDS-first reply to:', threadParentUri);
+        
+        const result = await atprotoAgent.replyToPost({
+          userId: user.id,
+          content,
+          parentUri: threadParentUri,
+          parentCid: threadParentCid,
+          rootUri: threadRootUri || undefined,
+          rootCid: threadRootCid || undefined,
+        });
+        
+        // The atproto-agent mirrors to DB, so we return the result
+        return { 
+          ...result.data,
+          replyingToUsername: (parentPost as any)?.author?.username 
+        };
+      }
+
+      // Fallback: Direct DB insert for non-federated users or non-federated parent
       const { data, error } = await supabase
         .from('posts')
         .insert({

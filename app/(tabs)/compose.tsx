@@ -20,6 +20,7 @@ import {
   Play,
   AlertCircle,
   WifiOff,
+  Reply,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import Animated, { 
@@ -30,17 +31,35 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 
-import { useCreatePost, useMediaUpload, usePWAPersistence, useNetworkStatus } from "@/lib/hooks";
+import { useCreatePost, useMediaUpload, usePWAPersistence, useNetworkStatus, useReplyToBlueskyPost } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 8;
 
 export default function ComposeScreen() {
+  // Reply params (passed from BlueskyPost component)
+  const { 
+    replyToUri, 
+    replyToCid, 
+    replyToAuthor, 
+    replyToHandle,
+    replyToContent 
+  } = useLocalSearchParams<{
+    replyToUri?: string;
+    replyToCid?: string;
+    replyToAuthor?: string;
+    replyToHandle?: string;
+    replyToContent?: string;
+  }>();
+  
+  const isReply = !!(replyToUri && replyToCid);
+  
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const createPost = useCreatePost();
+  const replyToBluesky = useReplyToBlueskyPost();
   const { user, profile, isAuthenticated } = useAuthStore();
   const media = useMediaUpload(4);
   
@@ -105,6 +124,27 @@ export default function ComposeScreen() {
     setError(null);
     
     try {
+      // Handle reply to Bluesky post
+      if (isReply && replyToUri && replyToCid) {
+        await replyToBluesky.mutateAsync({
+          content: content.trim(),
+          parent: {
+            parentUri: replyToUri,
+            parentCid: replyToCid,
+          },
+        });
+        
+        // Success feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        
+        setContent("");
+        router.back();
+        return;
+      }
+      
+      // Regular post flow
       // 1. Upload media first (if any)
       let mediaUrls: string[] | undefined;
       let videoUrl: string | undefined;
@@ -181,7 +221,8 @@ export default function ComposeScreen() {
   const charCount = content.length;
   const maxChars = 300;
   const isOverLimit = charCount > maxChars;
-  const canPost = (content.trim() || media.hasMedia) && !isOverLimit && !media.isUploading && !createPost.isPending;
+  const isPending = createPost.isPending || replyToBluesky.isPending;
+  const canPost = (content.trim() || media.hasMedia) && !isOverLimit && !media.isUploading && !isPending;
 
   // =====================================================
   // Render
@@ -209,13 +250,37 @@ export default function ComposeScreen() {
             disabled={!canPost}
             className={`bg-primary px-5 py-2.5 rounded-full ${!canPost ? 'opacity-50' : ''}`}
           >
-            {createPost.isPending ? (
+            {isPending ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text className="text-white font-semibold text-base">Post</Text>
+              <Text className="text-white font-semibold text-base">
+                {isReply ? 'Reply' : 'Post'}
+              </Text>
             )}
           </Pressable>
         </View>
+
+        {/* ========================================
+            Reply Context Banner
+        ======================================== */}
+        {isReply && replyToAuthor && (
+          <Animated.View 
+            entering={FadeIn.duration(200)}
+            className="flex-row items-center bg-primary/10 border border-primary/30 mx-4 mt-4 p-3 rounded-xl"
+          >
+            <Reply size={16} color="#10B981" />
+            <View className="flex-1 ml-2">
+              <Text className="text-text-secondary text-sm">
+                Replying to <Text className="text-primary font-semibold">@{replyToHandle || replyToAuthor}</Text>
+              </Text>
+              {replyToContent && (
+                <Text className="text-text-muted text-xs mt-0.5" numberOfLines={1}>
+                  {replyToContent}...
+                </Text>
+              )}
+            </View>
+          </Animated.View>
+        )}
 
         {/* ========================================
             Offline Banner 💎

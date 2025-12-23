@@ -16,6 +16,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PWAUpdater } from "@/components/PWAUpdater";
 import { IOSInstallPrompt } from "@/components/IOSInstallPrompt";
 import { WhatsNewToast } from "@/components/WhatsNewToast";
+import { ToastProvider } from "@/components/ui/Toast";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -91,23 +92,25 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "#0A0A0A" },
-          animation: "slide_from_right",
-        }}
-      />
-      
-      {/* 💎 PWA Update Toast - Shows when new version is available */}
-      <PWAUpdater checkInterval={60000} />
-      
-      {/* 💎 iOS Install Prompt - Guides Safari users to install */}
-      <IOSInstallPrompt />
-      
-      {/* 💎 What's New Toast - Shows after app updates */}
-      <WhatsNewToast />
+      <ToastProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#0A0A0A" },
+            animation: "slide_from_right",
+          }}
+        />
+        
+        {/* 💎 PWA Update Toast - Shows when new version is available */}
+        <PWAUpdater checkInterval={60000} />
+        
+        {/* 💎 iOS Install Prompt - Guides Safari users to install */}
+        <IOSInstallPrompt />
+        
+        {/* 💎 What's New Toast - Shows after app updates */}
+        <WhatsNewToast />
+      </ToastProvider>
     </SafeAreaProvider>
   );
 }
