@@ -670,4 +670,5 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
 });
 
 // Export sub-components for flexibility
-export { PostOuter, PostMeta, PostContent, PostControls, ActionButton, QuoteEmbed, EmbedRenderer };
+// Note: ActionButton not exported to avoid conflict with SocialPost's ActionButton
+export { PostOuter, PostMeta, PostContent, PostControls, QuoteEmbed, EmbedRenderer };
