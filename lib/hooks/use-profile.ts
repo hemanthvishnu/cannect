@@ -219,18 +219,39 @@ export function useIsFollowing(targetUserId: string) {
   });
 }
 
-// Follow a user with optimistic updates
+// Follow a user with optimistic updates (PDS-first for federated users)
 export function useFollowUser() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ targetUserId, targetDid }: { targetUserId: string; targetDid?: string | null }) => {
       if (!user) throw new Error("Not authenticated");
+      
+      // If current user is federated AND target has a DID, use PDS-first
+      if (profile?.did && targetDid) {
+        // Need to get target's profile info for PDS
+        const { data: targetProfile } = await supabase
+          .from('profiles')
+          .select('username, display_name, avatar_url')
+          .eq('id', targetUserId)
+          .single();
+        
+        await atprotoAgent.followUser({
+          userId: user.id,
+          targetDid,
+          targetHandle: targetProfile?.username,
+          targetDisplayName: targetProfile?.display_name,
+          targetAvatar: targetProfile?.avatar_url,
+        });
+        return targetUserId;
+      }
+      
+      // Fallback: Direct DB insert for non-federated users
       const { error } = await supabase.from("follows").insert({
         follower_id: user.id,
         following_id: targetUserId,
-        subject_did: targetDid, // AT Protocol DID for federation
+        subject_did: targetDid,
       } as any);
       if (error) throw error;
       return targetUserId;
@@ -317,15 +338,25 @@ export function useFollowUser() {
   });
 }
 
-// Unfollow a user with optimistic updates
+// Unfollow a user with optimistic updates (PDS-first for federated users)
 export function useUnfollowUser() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore(); // ✅ Consistent: use store instead of getSession
+  const { user, profile } = useAuthStore();
 
   return useMutation({
-    mutationFn: async (targetUserId: string) => {
+    mutationFn: async ({ targetUserId, targetDid }: { targetUserId: string; targetDid?: string | null }) => {
       if (!user) throw new Error("Not authenticated");
 
+      // If current user is federated AND target has a DID, use PDS-first
+      if (profile?.did && targetDid) {
+        await atprotoAgent.unfollowUser({
+          userId: user.id,
+          targetDid,
+        });
+        return targetUserId;
+      }
+      
+      // Fallback: Direct DB delete for non-federated users
       const { error } = await supabase
         .from("follows")
         .delete()
@@ -336,7 +367,7 @@ export function useUnfollowUser() {
       return targetUserId;
     },
     // ✅ Optimistic update for instant UI feedback
-    onMutate: async (targetUserId) => {
+    onMutate: async ({ targetUserId }) => {
       await queryClient.cancelQueries({ 
         queryKey: queryKeys.follows.isFollowing("current", targetUserId) 
       });
@@ -380,9 +411,9 @@ export function useUnfollowUser() {
         );
       }
       
-      return { previousIsFollowing, previousProfile, previousMyProfile };
+      return { previousIsFollowing, previousProfile, previousMyProfile, targetUserId };
     },
-    onError: (err, targetUserId, context) => {
+    onError: (err, { targetUserId }, context) => {
       if (context?.previousIsFollowing !== undefined) {
         queryClient.setQueryData(
           queryKeys.follows.isFollowing("current", targetUserId),
@@ -402,7 +433,7 @@ export function useUnfollowUser() {
         );
       }
     },
-    onSettled: (targetUserId) => {
+    onSettled: (result, error, { targetUserId }) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.follows.isFollowing("current", targetUserId!),
       });

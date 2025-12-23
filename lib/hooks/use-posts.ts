@@ -734,14 +734,14 @@ export function useUserPosts(userId: string, tab: ProfileTab = 'posts') {
 // --- Mutations with Optimistic Updates ---
 
 /**
- * Like a post
+ * Like a post (PDS-first for federated users)
  * 
- * Federation-ready: Accepts AT URI and CID for federated posts.
- * Database trigger will auto-queue the like for sync to Bluesky.
+ * For federated users: Creates like on PDS first, then mirrors to database
+ * For non-federated users: Direct database insert (no federation)
  */
 export function useLikePost() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ 
@@ -754,10 +754,22 @@ export function useLikePost() {
       subjectCid?: string | null;
     }) => {
       if (!user) throw new Error("Not authenticated");
+      
+      // If user is federated and post has AT URI, use PDS-first
+      if (profile?.did && subjectUri && subjectCid) {
+        await atprotoAgent.likePost({
+          userId: user.id,
+          subjectUri,
+          subjectCid,
+          postId,
+        });
+        return postId;
+      }
+      
+      // Fallback: Direct DB insert for non-federated users
       const { error } = await supabase.from("likes").insert({
         user_id: user.id,
         post_id: postId,
-        // AT Protocol fields for federation
         subject_uri: subjectUri,
         subject_cid: subjectCid,
       });
@@ -826,13 +838,31 @@ export function useLikePost() {
   });
 }
 
+/**
+ * Unlike a post (PDS-first for federated users)
+ * 
+ * For federated users: Deletes like from PDS first, then removes from database
+ * For non-federated users: Direct database delete
+ */
 export function useUnlikePost() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
   return useMutation({
-    mutationFn: async (postId: string) => {
+    mutationFn: async ({ postId, subjectUri }: { postId: string; subjectUri?: string | null }) => {
       if (!user) throw new Error("Not authenticated");
+      
+      // If user is federated, use PDS-first
+      if (profile?.did && subjectUri) {
+        await atprotoAgent.unlikePost({
+          userId: user.id,
+          subjectUri,
+          postId,
+        });
+        return postId;
+      }
+      
+      // Fallback: Direct DB delete for non-federated users
       const { error } = await supabase
         .from("likes")
         .delete()
@@ -841,7 +871,7 @@ export function useUnlikePost() {
       if (error) throw error;
       return postId;
     },
-    onMutate: async (postId) => {
+    onMutate: async ({ postId }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.posts.all });
       await queryClient.cancelQueries({ queryKey: queryKeys.posts.detail(postId) });
       
@@ -884,7 +914,7 @@ export function useUnlikePost() {
 
       return { previousPosts, previousDetail, previousThreads, postId };
     },
-    onError: (err, postId, context) => {
+    onError: (err, { postId }, context) => {
       queryClient.setQueryData(queryKeys.posts.all, context?.previousPosts);
       if (context?.postId) {
         queryClient.setQueryData(queryKeys.posts.detail(context.postId), context?.previousDetail);
@@ -894,7 +924,7 @@ export function useUnlikePost() {
         queryClient.setQueryData(queryKey, thread);
       });
     },
-    onSettled: (data, error, postId) => {
+    onSettled: (data, error, { postId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(postId) });
       queryClient.invalidateQueries({ queryKey: ['thread'] });
@@ -1191,16 +1221,14 @@ export function useQuotePost() {
 }
 
 /**
- * Toggle Repost - Creates or Undoes a simple repost
+ * Toggle Repost - Creates or Undoes a simple repost (PDS-first for federated users)
  * 
- * FEDERATION-READY: Uses separate `reposts` table (Bluesky pointer model)
- * - Reposts are now a separate table, not posts with is_repost=true
- * - This is identical to how Bluesky handles reposts
- * - Database trigger auto-queues for sync to Bluesky
+ * For federated users: Creates/deletes repost on PDS first, then mirrors to database
+ * For non-federated users: Direct database operations
  */
 export function useToggleRepost() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
   return useMutation({
     mutationFn: async ({ 
@@ -1217,25 +1245,47 @@ export function useToggleRepost() {
       if (!user) throw new Error("Not authenticated");
 
       const targetId = post.id;
+      const effectiveUri = subjectUri || post.at_uri;
+      const effectiveCid = subjectCid || post.at_cid;
 
       if (undo || post.is_reposted_by_me) {
-        // UNDO REPOST: Delete from reposts table
-        const { error } = await supabase
-          .from("reposts")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("post_id", targetId);
-        if (error) throw error;
+        // UNDO REPOST
+        if (profile?.did && effectiveUri) {
+          // PDS-first for federated users
+          await atprotoAgent.unrepostPost({
+            userId: user.id,
+            subjectUri: effectiveUri,
+            postId: targetId,
+          });
+        } else {
+          // Direct DB delete for non-federated users
+          const { error } = await supabase
+            .from("reposts")
+            .delete()
+            .eq("user_id", user.id)
+            .eq("post_id", targetId);
+          if (error) throw error;
+        }
       } else {
-        // CREATE REPOST: Insert into reposts table with AT Protocol fields
-        const { error } = await supabase.from("reposts").insert({
-          user_id: user.id,
-          post_id: targetId,
-          // AT Protocol fields for federation
-          subject_uri: subjectUri || post.at_uri,
-          subject_cid: subjectCid || post.at_cid,
-        });
-        if (error) throw error;
+        // CREATE REPOST
+        if (profile?.did && effectiveUri && effectiveCid) {
+          // PDS-first for federated users
+          await atprotoAgent.repostPost({
+            userId: user.id,
+            subjectUri: effectiveUri,
+            subjectCid: effectiveCid,
+            postId: targetId,
+          });
+        } else {
+          // Direct DB insert for non-federated users
+          const { error } = await supabase.from("reposts").insert({
+            user_id: user.id,
+            post_id: targetId,
+            subject_uri: effectiveUri,
+            subject_cid: effectiveCid,
+          });
+          if (error) throw error;
+        }
       }
     },
     // Optimistic update for instant feedback
