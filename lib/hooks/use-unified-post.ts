@@ -189,13 +189,18 @@ export function useUnifiedPostActions(post: UnifiedPost): UnifiedPostActions {
   }, [router, post]);
 
   // View post navigation
+  // Use federated view for ANY post with an AT URI to ensure lazy sync with Bluesky
   const viewPost = useCallback(() => {
-    if (post.isExternal) {
+    const hasAtUri = post.uri.startsWith("at://");
+    
+    if (hasAtUri) {
+      // Federated view fetches fresh data from Bluesky and syncs to Supabase
       router.push({
         pathname: "/federated/post",
         params: { uri: post.uri }
       } as any);
     } else if (post.localId) {
+      // Local-only posts (no AT URI) use the local view
       router.push(`/post/${post.localId}` as any);
     }
   }, [router, post]);

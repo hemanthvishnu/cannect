@@ -549,10 +549,12 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
   const router = useRouter();
 
   // Default navigation handlers
+  // Use federated view for ANY post with AT URI to ensure lazy sync with Bluesky
   const handlePress = useCallback(() => {
     if (onPress) {
       onPress();
-    } else if (post.isExternal) {
+    } else if (post.uri.startsWith("at://")) {
+      // Federated view fetches fresh data from Bluesky and syncs to Supabase
       router.push({
         pathname: "/federated/post",
         params: { uri: post.uri }
@@ -560,7 +562,7 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
     } else if (post.localId) {
       router.push(`/post/${post.localId}` as any);
     }
-  }, [onPress, post.uri, post.localId, post.isExternal, router]);
+  }, [onPress, post.uri, post.localId, router]);
 
   const handleAuthorPress = useCallback(() => {
     if (onAuthorPress) {
@@ -577,7 +579,8 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
     
     if (onQuotePress) {
       onQuotePress(quote.uri);
-    } else if (quote.isExternal) {
+    } else if (quote.uri.startsWith("at://")) {
+      // AT URI quotes use federated view for sync
       router.push({
         pathname: "/federated/post",
         params: { uri: quote.uri }
