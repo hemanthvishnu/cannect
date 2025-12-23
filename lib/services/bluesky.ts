@@ -4,6 +4,8 @@
  * This avoids CORS issues when running in the browser.
  */
 
+import { supabase } from "@/lib/supabase";
+
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 
@@ -196,6 +198,32 @@ function parseBlueskyPost(bskyPost: any): FederatedPost {
   };
 }
 
+/**
+ * Lazy sync: Update local post counts from Bluesky
+ * Called when viewing post details to keep counts fresh
+ * Fails silently - doesn't block the UI if update fails
+ */
+async function syncPostCounts(post: FederatedPost): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        likes_count: post.likes_count,
+        reposts_count: post.reposts_count,
+        replies_count: post.replies_count,
+      })
+      .eq('at_uri', post.uri);
+    
+    if (error) {
+      // Silently fail - this is just an optimization
+      console.debug('[syncPostCounts] Update failed (post may not exist locally):', error.message);
+    }
+  } catch (err) {
+    // Silently fail
+    console.debug('[syncPostCounts] Error:', err);
+  }
+}
+
 export async function getBlueskyPostThread(uri: string): Promise<BlueskyThread | null> {
   try {
     const data = await fetchBluesky("app.bsky.feed.getPostThread", {
@@ -210,6 +238,10 @@ export async function getBlueskyPostThread(uri: string): Promise<BlueskyThread |
 
     const thread = data.thread;
     const mainPost = parseBlueskyPost(thread.post);
+    
+    // Lazy sync: Update local DB with fresh counts from Bluesky
+    // Fire and forget - don't await, don't block the UI
+    syncPostCounts(mainPost);
     
     // Parse replies recursively (flatten for now)
     const replies: FederatedPost[] = [];
