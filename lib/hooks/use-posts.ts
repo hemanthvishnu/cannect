@@ -20,6 +20,40 @@ import { emitFederationError } from "@/lib/utils/federation-events";
 import * as atprotoAgent from "@/lib/services/atproto-agent";
 
 const POSTS_PER_PAGE = 20;
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
+
+/**
+ * Lazy sync: Sync likes/reposts from Bluesky and create notifications
+ * Called when viewing a local post that has an at_uri (is federated)
+ */
+async function syncPostInteractions(
+  postId: string, 
+  atUri: string, 
+  authorId: string,
+  type: 'likes' | 'reposts'
+): Promise<void> {
+  try {
+    const syncUrl = `${SUPABASE_URL}/functions/v1/bluesky-proxy?action=syncPostInteractions&uri=${encodeURIComponent(atUri)}&postId=${postId}&authorId=${authorId}&type=${type}`;
+    const res = await fetch(syncUrl, {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "apikey": SUPABASE_ANON_KEY,
+      },
+    });
+    
+    if (res.ok) {
+      const result = await res.json();
+      if (result.synced > 0) {
+        console.debug(`[syncPostInteractions] Synced ${result.synced} ${type} notifications`);
+      }
+    }
+  } catch (err) {
+    // Silently fail - this is just an optimization
+    console.debug('[syncPostInteractions] Error:', err);
+  }
+}
 
 /**
  * Helper to update a post within a ThreadView (ancestors, focusedPost, or replies)
@@ -512,6 +546,13 @@ export function usePost(postId: string) {
       // Handle single result manually since fetchPostsWithCounts expects array
       const { data: post, error } = await query;
       if (error) throw error;
+      
+      // Lazy sync: If this is a federated post (has at_uri), sync external likes/reposts
+      // Fire and forget - don't await, don't block the UI
+      if (post.at_uri && post.user_id) {
+        syncPostInteractions(post.id, post.at_uri, post.user_id, 'likes');
+        syncPostInteractions(post.id, post.at_uri, post.user_id, 'reposts');
+      }
       
       const enriched = await fetchPostsWithCounts({ data: [post] }, user?.id);
       return enriched[0] as PostWithAuthor;

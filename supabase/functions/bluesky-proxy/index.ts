@@ -178,6 +178,95 @@ serve(async (req) => {
         });
       }
 
+      case "syncPostInteractions": {
+        // Sync likes/reposts from Bluesky and create notifications
+        const postUri = url.searchParams.get("uri") || "";
+        const postId = url.searchParams.get("postId") || "";
+        const postAuthorId = url.searchParams.get("authorId") || "";
+        const interactionType = url.searchParams.get("type") as "likes" | "reposts";
+        
+        if (!postUri || !postId || !postAuthorId || !interactionType) {
+          throw new Error("Missing required params: uri, postId, authorId, type");
+        }
+        
+        // Fetch likers or reposters from Bluesky
+        const endpoint = interactionType === "likes" ? "getLikes" : "getRepostedBy";
+        const listUrl = `${BSKY_PUBLIC_API}/app.bsky.feed.${endpoint}?uri=${encodeURIComponent(postUri)}&limit=50`;
+        
+        const listRes = await fetchWithTimeout(listUrl, {
+          headers: { "Accept": "application/json", "User-Agent": "Cannect/1.0" },
+        });
+        
+        if (!listRes.ok) {
+          return new Response(JSON.stringify({ synced: 0, error: "Failed to fetch from Bluesky" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        
+        const listData = await listRes.json();
+        const users = interactionType === "likes" 
+          ? listData.likes?.map((l: any) => l.actor) 
+          : listData.repostedBy;
+        
+        if (!users || !Array.isArray(users)) {
+          return new Response(JSON.stringify({ synced: 0 }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        
+        let synced = 0;
+        const reason = interactionType === "likes" ? "like" : "repost";
+        
+        for (const user of users) {
+          try {
+            // Skip if this is a local Cannect user (they'd already have a notification from the trigger)
+            const { data: localProfile } = await supabaseAdmin
+              .from("profiles")
+              .select("id, is_local")
+              .eq("did", user.did)
+              .maybeSingle();
+            
+            if (localProfile?.is_local) {
+              continue; // Skip local users
+            }
+            
+            // Check if notification already exists for this actor
+            const { data: existingNotif } = await supabaseAdmin
+              .from("notifications")
+              .select("id")
+              .eq("user_id", postAuthorId)
+              .eq("post_id", postId)
+              .eq("reason", reason)
+              .eq("actor_did", user.did)
+              .maybeSingle();
+            
+            if (existingNotif) {
+              continue; // Already notified
+            }
+            
+            // Create external notification
+            await supabaseAdmin.from("notifications").insert({
+              user_id: postAuthorId,
+              actor_id: null,
+              actor_did: user.did,
+              actor_handle: user.handle,
+              actor_display_name: user.displayName || user.handle,
+              actor_avatar: user.avatar,
+              reason: reason,
+              post_id: postId,
+              is_external: true,
+            });
+            synced++;
+          } catch (err) {
+            console.error("Sync interaction error:", err);
+          }
+        }
+        
+        return new Response(JSON.stringify({ synced, total: users.length }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       case "xrpc":
         // ✅ Gold Standard Resilience: Generic XRPC Passthrough
         const path = url.searchParams.get("path") || url.searchParams.get("endpoint") || "";
