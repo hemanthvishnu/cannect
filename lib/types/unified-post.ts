@@ -153,10 +153,12 @@ export function fromLocalPost(
   currentUserId?: string
 ): UnifiedPost {
   const author = post.author;
-  // Check if post is from OUR PDS (cannect.space) - these are Cannect users' federated posts
-  const isOwnPdsFederated = !!(post as any).at_uri && (post as any).at_uri?.includes("cannect.space");
-  // External federated = has at_uri but NOT from cannect.space
-  const isExternalFederated = !!(post as any).at_uri && !(post as any).at_uri?.includes("cannect.space");
+  // Check if author is a local Cannect user using the is_local flag from profile
+  // is_local=true means the user was created on Cannect and has a cannect.space PDS account
+  // is_local=false or undefined means it's an external user (e.g., ingested from Bluesky)
+  const isLocalUser = author?.is_local === true;
+  // External federated = author is NOT a local Cannect user (ingested from external sources)
+  const isExternalFederated = !isLocalUser && !!(post as any).external_source;
   
   // Build author - prefer AT Protocol handle for federated posts
   const unifiedAuthor: UnifiedAuthor = {
@@ -176,7 +178,8 @@ export function fromLocalPost(
   // Check for quoted post
   if (post.type === "quote" && post.quoted_post?.id) {
     const quoted = post.quoted_post;
-    const quotedIsExternalFederated = !!(quoted as any).at_uri && !(quoted as any).at_uri?.includes("cannect.space");
+    // Check if quoted post's author is local using is_local flag
+    const quotedIsExternalFederated = (quoted.author as any)?.is_local !== true && !!(quoted as any).external_source;
     
     embed = {
       type: "quote",

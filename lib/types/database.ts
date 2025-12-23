@@ -94,10 +94,11 @@ export type FederatedPost = Omit<BasePostWithAuthor, 'external_metadata'> & {
 /** Discriminated union for all post types */
 export type PostWithAuthor = LocalPost | FederatedPost;
 
-/** Type guard for federated posts (uses at_uri for federation) */
+/** Type guard for federated posts (checks if author is not a local Cannect user) */
 export function isFederatedPost(post: PostWithAuthor): boolean {
-  const atUri = (post as any).at_uri;
-  return !!atUri && !atUri.includes('cannect.space');
+  // A post is "federated" (external) if the author is NOT a local Cannect user
+  // AND it has an external_source marker indicating it was ingested from external network
+  return post.author?.is_local !== true && !!(post as any).external_source;
 }
 
 /** 
