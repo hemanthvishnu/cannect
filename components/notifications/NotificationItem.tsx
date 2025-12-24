@@ -122,13 +122,15 @@ export const NotificationItem = memo(function NotificationItem({
   const { icon, text } = getNotificationDetails();
 
   const handlePress = () => {
-    // If post has an at_uri, use federated view for real-time Bluesky data
-    if (notification.post?.at_uri) {
-      router.push(`/federated/post?uri=${encodeURIComponent(notification.post.at_uri)}` as any);
-    } else if (notification.post_id) {
+    // Prioritize post_id - if post exists in our DB, use local thread view
+    // This applies to both Cannect-native and synced external posts
+    if (notification.post_id) {
       router.push(`/post/${notification.post_id}` as any);
+    } else if (notification.post?.at_uri) {
+      // External post not in our DB - use federated view
+      router.push(`/federated/post?uri=${encodeURIComponent(notification.post.at_uri)}` as any);
     } else {
-      // Use best available identifier
+      // Use best available identifier for actor profile
       const identifier = notification.actor_handle || notification.actor?.username || notification.actor?.id;
       if (identifier) router.push(`/user/${identifier}` as any);
     }

@@ -549,18 +549,19 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
   const router = useRouter();
 
   // Default navigation handlers
-  // Use federated view for ANY post with AT URI to ensure lazy sync with Bluesky
+  // Prioritize localId - posts in our DB use local thread view for full features
   const handlePress = useCallback(() => {
     if (onPress) {
       onPress();
+    } else if (post.localId) {
+      // Post exists in our DB - use local thread view
+      router.push(`/post/${post.localId}` as any);
     } else if (post.uri.startsWith("at://")) {
-      // Federated view fetches fresh data from Bluesky and syncs to Supabase
+      // External post not in our DB - use federated view
       router.push({
         pathname: "/federated/post",
         params: { uri: post.uri }
       } as any);
-    } else if (post.localId) {
-      router.push(`/post/${post.localId}` as any);
     }
   }, [onPress, post.uri, post.localId, router]);
 

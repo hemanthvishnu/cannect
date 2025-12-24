@@ -151,19 +151,20 @@ export function useUnifiedPostActions(post: UnifiedPost): UnifiedPostActions {
   }, [router, post]);
 
   // View post navigation
-  // Use federated view for ANY post with an AT URI to ensure lazy sync with Bluesky
+  // Prioritize localId - posts in our DB use local thread view for full features
+  // Only use federated view for cached external posts (no localId)
   const viewPost = useCallback(() => {
-    const hasAtUri = post.uri.startsWith("at://");
-    
-    if (hasAtUri) {
-      // Federated view fetches fresh data from Bluesky and syncs to Supabase
+    if (post.localId) {
+      // Post exists in our posts table - use local thread view
+      // This works for both Cannect-native AND synced external posts
+      router.push(`/post/${post.localId}` as any);
+    } else if (post.uri.startsWith("at://")) {
+      // External post not in our DB yet - use federated view
+      // This fetches from Bluesky and may cache for future
       router.push({
         pathname: "/federated/post",
         params: { uri: post.uri }
       } as any);
-    } else if (post.localId) {
-      // Local-only posts (no AT URI) use the local view
-      router.push(`/post/${post.localId}` as any);
     }
   }, [router, post]);
 
