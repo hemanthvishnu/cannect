@@ -352,3 +352,151 @@ export async function runAllTests() {
   console.log('✅ Test suite complete!');
   console.log('Check your Bluesky profile to verify federation.');
 }
+
+// =============================================================================
+// VERSION 2.1 UNIFIED ARCHITECTURE TESTS
+// =============================================================================
+
+/**
+ * Verify actor_did is populated on likes table
+ * Version 2.1: All interactions use actor_did + subject_uri as universal key
+ */
+export async function testUnifiedLikeSchema() {
+  console.log('\n🧪 TEST: Unified Like Schema (Version 2.1)');
+  console.log('===========================================');
+
+  const { user, profile } = await getTestUserInfo() || {};
+  if (!user || !profile?.did) {
+    console.log('❌ User not federated');
+    return false;
+  }
+
+  try {
+    // Check if likes table has actor_did column and it's populated
+    const { data: likes, error } = await supabase
+      .from('likes')
+      .select('id, user_id, actor_did, subject_uri, at_uri')
+      .eq('user_id', user.id)
+      .limit(5);
+
+    if (error) {
+      console.log('  ❌ Error querying likes:', error.message);
+      return false;
+    }
+
+    console.log(`  📊 Found ${likes?.length || 0} likes for user`);
+    
+    if (likes && likes.length > 0) {
+      const withActorDid = likes.filter(l => l.actor_did);
+      console.log(`  ✅ Likes with actor_did: ${withActorDid.length}/${likes.length}`);
+      
+      if (withActorDid.length === likes.length) {
+        console.log('  ✅ All likes have actor_did populated');
+        return true;
+      } else {
+        console.log('  ⚠️ Some likes missing actor_did');
+        return false;
+      }
+    }
+    
+    console.log('  ℹ️ No likes found to verify');
+    return true;
+  } catch (error: any) {
+    console.log('  ❌ Error:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Verify cached_posts table exists and has correct schema
+ */
+export async function testCachedPostsTable() {
+  console.log('\n🧪 TEST: Cached Posts Table (Version 2.1)');
+  console.log('==========================================');
+
+  try {
+    const { data, error } = await supabase
+      .from('cached_posts')
+      .select('at_uri, author_did, like_count, repost_count, reply_count')
+      .limit(3);
+
+    if (error) {
+      console.log('  ❌ Error querying cached_posts:', error.message);
+      console.log('  ℹ️ Table may not exist or have different column names');
+      return false;
+    }
+
+    console.log(`  ✅ cached_posts table exists with ${data?.length || 0} cached posts`);
+    
+    if (data && data.length > 0) {
+      console.log('  📊 Sample cached post:');
+      console.log(`    - at_uri: ${data[0].at_uri?.substring(0, 50)}...`);
+      console.log(`    - author_did: ${data[0].author_did?.substring(0, 30)}...`);
+      console.log(`    - counts: ${data[0].like_count}L/${data[0].repost_count}R/${data[0].reply_count}C`);
+    }
+    
+    return true;
+  } catch (error: any) {
+    console.log('  ❌ Error:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Verify cached_profiles table exists
+ */
+export async function testCachedProfilesTable() {
+  console.log('\n🧪 TEST: Cached Profiles Table (Version 2.1)');
+  console.log('=============================================');
+
+  try {
+    const { data, error } = await supabase
+      .from('cached_profiles')
+      .select('did, handle, display_name, followers_count, following_count')
+      .limit(3);
+
+    if (error) {
+      console.log('  ❌ Error querying cached_profiles:', error.message);
+      return false;
+    }
+
+    console.log(`  ✅ cached_profiles table exists with ${data?.length || 0} cached profiles`);
+    
+    if (data && data.length > 0) {
+      console.log('  📊 Sample cached profile:');
+      console.log(`    - handle: @${data[0].handle}`);
+      console.log(`    - display_name: ${data[0].display_name}`);
+      console.log(`    - followers: ${data[0].followers_count}`);
+    }
+    
+    return true;
+  } catch (error: any) {
+    console.log('  ❌ Error:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Run all Version 2.1 architecture tests
+ */
+export async function runUnifiedArchitectureTests() {
+  console.log('\n🏗️ Version 2.1 Unified Architecture Tests');
+  console.log('==========================================\n');
+
+  const results = {
+    likeSchema: await testUnifiedLikeSchema(),
+    cachedPosts: await testCachedPostsTable(),
+    cachedProfiles: await testCachedProfilesTable(),
+  };
+
+  console.log('\n📋 Results Summary:');
+  console.log(`  - Unified Like Schema: ${results.likeSchema ? '✅' : '❌'}`);
+  console.log(`  - Cached Posts Table: ${results.cachedPosts ? '✅' : '❌'}`);
+  console.log(`  - Cached Profiles Table: ${results.cachedProfiles ? '✅' : '❌'}`);
+
+  const allPassed = Object.values(results).every(Boolean);
+  console.log(`\n${allPassed ? '✅ All tests passed!' : '⚠️ Some tests failed'}`);
+  
+  return allPassed;
+}
+
