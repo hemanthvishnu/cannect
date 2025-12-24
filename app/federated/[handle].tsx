@@ -6,7 +6,7 @@ import { Image } from "expo-image";
 import { ArrowLeft, Globe2, Users, UserPlus, Check } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 import { UnifiedFeedItem } from "@/components/social";
-import type { BlueskyPostData } from "@/components/social/BlueskyPost";
+import type { BlueskyPostData } from "@/lib/types/bluesky";
 import { useIsFollowingDid, useFollowBlueskyUser, useUnfollowBlueskyUser } from "@/lib/hooks";
 import { fromBlueskyPost, type UnifiedPost } from "@/lib/types/unified-post";
 

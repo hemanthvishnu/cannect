@@ -160,7 +160,7 @@ const ActionButton = memo(function ActionButton({
 interface PostMetaProps {
   author: UnifiedAuthor;
   createdAt: string;
-  isExternal: boolean;
+  isCached: boolean;
   source: "cannect" | "bluesky";
   onAuthorPress?: () => void;
   onMorePress?: () => void;
@@ -169,7 +169,7 @@ interface PostMetaProps {
 const PostMeta = memo(function PostMeta({
   author,
   createdAt,
-  isExternal,
+  isCached,
   source,
   onAuthorPress,
   onMorePress,
@@ -208,7 +208,7 @@ const PostMeta = memo(function PostMeta({
             <BadgeCheck size={16} color="#10B981" fill="#10B981" />
           )}
           
-          {isExternal && (
+          {isCached && (
             <View className="flex-row items-center gap-1 bg-blue-500/20 px-1.5 py-0.5 rounded-full">
               <Globe2 size={12} color="#3B82F6" />
               <Text className="text-xs text-blue-500 font-medium">Bluesky</Text>
@@ -322,7 +322,7 @@ const QuoteEmbed = memo(function QuoteEmbed({ quote, onPress }: QuoteEmbedProps)
             {quote.author.displayName}
           </Text>
           
-          {quote.isExternal && (
+          {quote.isCached && (
             <View className="flex-row items-center gap-1 bg-blue-500/20 px-1.5 py-0.5 rounded-full">
               <Globe2 size={10} color="#3B82F6" />
               <Text className="text-xs text-blue-500 font-medium">Bluesky</Text>
@@ -367,14 +367,14 @@ const QuoteEmbed = memo(function QuoteEmbed({ quote, onPress }: QuoteEmbedProps)
 interface EmbedRendererProps {
   embed: UnifiedEmbed;
   postUri: string;
-  isExternal: boolean;
+  isCached: boolean;
   onQuotePress?: () => void;
 }
 
 const EmbedRenderer = memo(function EmbedRenderer({ 
   embed, 
   postUri,
-  isExternal,
+  isCached,
   onQuotePress,
 }: EmbedRendererProps) {
   switch (embed.type) {
@@ -382,7 +382,7 @@ const EmbedRenderer = memo(function EmbedRenderer({
       return embed.images && embed.images.length > 0 ? (
         <PostCarousel 
           mediaUrls={embed.images} 
-          isFederated={isExternal}
+          isFederated={isCached}
         />
       ) : null;
 
@@ -623,7 +623,7 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
         <PostMeta
           author={post.author}
           createdAt={post.createdAt}
-          isExternal={post.isExternal}
+          isCached={post.isCached}
           source={post.source}
           onAuthorPress={handleAuthorPress}
           onMorePress={onMore}
@@ -638,7 +638,7 @@ export const UnifiedPostCard = memo(function UnifiedPostCard({
             <EmbedRenderer
               embed={post.embed}
               postUri={post.uri}
-              isExternal={post.isExternal}
+              isCached={post.isCached}
               onQuotePress={handleQuotePress}
             />
           )}

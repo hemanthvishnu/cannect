@@ -17,7 +17,7 @@ import { UnifiedFeedItem } from "@/components/social/UnifiedFeedItem";
 import { ReplyBar } from "@/components/social/ReplyBar";
 import { fromBlueskyPost, type UnifiedPost } from "@/lib/types/unified-post";
 import { useReplyToBlueskyPost, useEnrichedPost } from "@/lib/hooks";
-import type { BlueskyPostData } from "@/components/social/BlueskyPost";
+import type { BlueskyPostData } from "@/lib/types/bluesky";
 
 // Convert FederatedPost to BlueskyPostData format for the adapter
 function toBlueskyPostData(post: FederatedPost): BlueskyPostData {

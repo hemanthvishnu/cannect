@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { SkeletonProfile, SkeletonCard } from "@/components/ui/Skeleton";
 import { useAuthStore } from "@/lib/stores";
 import { fromLocalPost, fromBlueskyPost, type UnifiedPost } from "@/lib/types/unified-post";
-import type { BlueskyPostData } from "@/components/social/BlueskyPost";
+import type { BlueskyPostData } from "@/lib/types/bluesky";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -228,7 +228,7 @@ export default function UserProfileScreen() {
   
   const handleDoQuotePost = useCallback(() => {
     if (!repostMenuPost) return;
-    if (repostMenuPost.isExternal) {
+    if (repostMenuPost.isCached) {
       router.push({
         pathname: "/compose/quote",
         params: { 

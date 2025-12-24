@@ -23,34 +23,9 @@ import {
 } from "@/lib/hooks/use-posts";
 import { cn } from "@/lib/utils";
 
-export interface BlueskyPostData {
-  uri: string;      // AT Protocol URI
-  cid: string;      // Content ID
-  content: string;
-  createdAt: string;
-  author: {
-    did: string;
-    handle: string;
-    displayName?: string;
-    avatar?: string;
-  };
-  likeCount?: number;
-  repostCount?: number;
-  replyCount?: number;
-  images?: string[];
-  // Quoted post for quote posts
-  quotedPost?: {
-    uri: string;
-    cid: string;
-    content: string;
-    author: {
-      did: string;
-      handle: string;
-      displayName: string;
-      avatar?: string;
-    };
-  };
-}
+// Re-export from canonical location for backwards compatibility
+export type { BlueskyPostData } from "@/lib/types/bluesky";
+import type { BlueskyPostData } from "@/lib/types/bluesky";
 
 interface BlueskyPostProps {
   post: BlueskyPostData;

@@ -6,7 +6,7 @@
  */
 
 import type { PostWithAuthor, FederatedPost } from "./database";
-import type { BlueskyPostData } from "@/components/social/BlueskyPost";
+import type { BlueskyPostData } from "./bluesky";
 
 // =====================================================
 // UnifiedPost - The single source of truth
@@ -601,7 +601,7 @@ export function fromServiceFederatedPost(
 
 /** @deprecated Use isCachedPost instead */
 export function isExternalPost(post: UnifiedPost): boolean {
-  return post.isCached || post.isExternal || false;
+  return post.isCached;
 }
 
 /** Check if post is from cached_posts table (external network) */

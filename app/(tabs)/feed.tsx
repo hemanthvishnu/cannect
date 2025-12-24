@@ -154,8 +154,8 @@ export default function FeedScreen() {
     
     const isReposted = repostMenuPost.viewer.isReposted;
     
-    // For external posts, use the Bluesky hooks
-    if (repostMenuPost.isExternal) {
+    // For external/cached posts, use the Bluesky hooks
+    if (repostMenuPost.isCached) {
       // This will be handled by the UnifiedFeedItem component
       // The menu just triggers the action
       return;
@@ -185,8 +185,8 @@ export default function FeedScreen() {
   const handleDoQuotePost = useCallback(() => {
     if (!repostMenuPost) return;
     
-    if (repostMenuPost.isExternal) {
-      // For external posts, pass the AT URI
+    if (repostMenuPost.isCached) {
+      // For external/cached posts, pass the AT URI
       router.push({
         pathname: "/compose/quote",
         params: { 

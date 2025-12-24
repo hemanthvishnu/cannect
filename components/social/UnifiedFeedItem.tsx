@@ -71,7 +71,7 @@ export const UnifiedFeedItem = memo(function UnifiedFeedItem({
   // Handle share
   const handleShare = useCallback(async () => {
     try {
-      const url = post.isExternal
+      const url = post.isCached
         ? `https://bsky.app/profile/${post.author.handle}/post/${post.uri.split('/').pop()}`
         : `https://cannect.app/post/${post.localId}`;
         
