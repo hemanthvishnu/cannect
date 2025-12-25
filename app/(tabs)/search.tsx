@@ -6,20 +6,35 @@ import { useState, useMemo, useCallback } from "react";
 import { View, Text, TextInput, Pressable, ActivityIndicator, Image, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { Search as SearchIcon, X, Users, Sparkles, UserPlus, Check, TrendingUp, Hash } from "lucide-react-native";
+import { Search as SearchIcon, X, Users, Sparkles, UserPlus, Check, TrendingUp, Hash, FileText } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useSearchUsers, useSuggestedUsers, useFollow, useTrending } from "@/lib/hooks";
+import { useSearchUsers, useSuggestedUsers, useFollow, useTrending, useSearchPosts } from "@/lib/hooks";
 import { useDebounce } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { useQueryClient } from "@tanstack/react-query";
-import type { AppBskyActorDefs } from '@atproto/api';
+import type { AppBskyActorDefs, AppBskyFeedDefs, AppBskyFeedPost } from '@atproto/api';
+
+function formatTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString();
+}
 
 type ProfileView = AppBskyActorDefs.ProfileView;
 type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
 type AnyProfileView = ProfileView | ProfileViewDetailed;
 
-type SearchTab = "users" | "trending";
+type SearchTab = "users" | "trending" | "posts";
 
 function UserRow({ 
   user, 
@@ -90,6 +105,93 @@ function UserRow({
           <Text className="text-primary text-sm font-medium">Following</Text>
         </View>
       )}
+    </Pressable>
+  );
+}
+
+function PostRow({ 
+  post, 
+  onPress,
+  onAuthorPress,
+}: { 
+  post: AppBskyFeedDefs.PostView;
+  onPress: () => void;
+  onAuthorPress: () => void;
+}) {
+  const record = post.record as AppBskyFeedPost.Record;
+  const author = post.author;
+
+  // Get embed images if present
+  const embedImages = post.embed?.$type === 'app.bsky.embed.images#view' 
+    ? (post.embed as any).images 
+    : [];
+
+  return (
+    <Pressable 
+      onPress={onPress}
+      className="px-4 py-3 border-b border-border active:bg-surface-elevated"
+    >
+      <View className="flex-row">
+        {/* Avatar */}
+        <Pressable onPress={onAuthorPress}>
+          {author.avatar ? (
+            <Image 
+              source={{ uri: author.avatar }} 
+              className="w-10 h-10 rounded-full bg-surface-elevated"
+            />
+          ) : (
+            <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
+              <Text className="text-text-muted text-lg">{author.handle[0].toUpperCase()}</Text>
+            </View>
+          )}
+        </Pressable>
+
+        {/* Content */}
+        <View className="flex-1 ml-3">
+          {/* Header */}
+          <View className="flex-row items-center">
+            <Text className="font-semibold text-text-primary flex-shrink" numberOfLines={1}>
+              {author.displayName || author.handle}
+            </Text>
+            <Text className="text-text-muted mx-1">·</Text>
+            <Text className="text-text-muted flex-shrink-0">
+              {formatTime(record.createdAt)}
+            </Text>
+          </View>
+          <Text className="text-text-muted text-sm" numberOfLines={1}>
+            @{author.handle}
+          </Text>
+
+          {/* Post text */}
+          <Text className="text-text-primary mt-1 leading-5">
+            {record.text}
+          </Text>
+
+          {/* Images */}
+          {embedImages.length > 0 && (
+            <View className="mt-2 rounded-xl overflow-hidden">
+              {embedImages.length === 1 ? (
+                <Image 
+                  source={{ uri: embedImages[0].thumb }} 
+                  className="w-full h-48 rounded-xl"
+                  resizeMode="cover"
+                />
+              ) : (
+                <View className="flex-row flex-wrap gap-1">
+                  {embedImages.slice(0, 4).map((img: any, idx: number) => (
+                    <Image 
+                      key={idx}
+                      source={{ uri: img.thumb }} 
+                      className="w-[48%] h-32 rounded-lg"
+                      resizeMode="cover"
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -165,6 +267,7 @@ export default function SearchScreen() {
   const hasQuery = debouncedQuery.trim().length >= 2;
 
   const usersQuery = useSearchUsers(hasQuery && activeTab === "users" ? debouncedQuery : "");
+  const postsQuery = useSearchPosts(hasQuery && activeTab === "posts" ? `#${debouncedQuery.replace(/^#/, '')}` : "");
   const suggestedUsersQuery = useSuggestedUsers();
   const trendingQuery = useTrending(24, 15);
   
@@ -177,7 +280,7 @@ export default function SearchScreen() {
     // Remove # prefix if present and search for it
     const cleanTag = tag.startsWith('#') ? tag.slice(1) : tag;
     setQuery(cleanTag);
-    setActiveTab("users"); // Switch to users to show search results
+    setActiveTab("posts"); // Switch to posts to show hashtag results
   };
 
   // Filter out users already being followed and self
@@ -188,14 +291,19 @@ export default function SearchScreen() {
     );
   }, [usersQuery.data, currentUserDid]);
 
-  // Filter suggested users - exclude self only (show all users including followed)
+  // Filter suggested users - exclude self AND already followed (show discoverable users)
   const suggestedUsers = useMemo(() => {
     const allUsers = suggestedUsersQuery.data || [];
-    console.log('[Search] Raw users:', allUsers.length);
-    const filtered = allUsers.filter(user => user.did !== currentUserDid);
-    console.log('[Search] After filter:', filtered.length);
-    return filtered;
+    // Show only users not already followed
+    return allUsers.filter(user => 
+      user.did !== currentUserDid && !user.viewer?.following
+    );
   }, [suggestedUsersQuery.data, currentUserDid]);
+
+  // Get posts from search
+  const posts = useMemo(() => {
+    return postsQuery.data?.pages?.flatMap(page => page.posts) || [];
+  }, [postsQuery.data]);
 
   const isLoading = usersQuery.isLoading;
   const data = users;
@@ -268,6 +376,16 @@ export default function SearchScreen() {
             Trending
           </Text>
         </Pressable>
+        {hasQuery && (
+          <Pressable
+            onPress={() => setActiveTab("posts")}
+            className={`flex-1 py-3 items-center ${activeTab === "posts" ? "border-b-2 border-primary" : ""}`}
+          >
+            <Text className={activeTab === "posts" ? "text-primary font-semibold" : "text-text-muted"}>
+              Posts
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Results */}
@@ -330,6 +448,55 @@ export default function SearchScreen() {
             onHashtagPress={handleHashtagPress}
           />
         </ScrollView>
+      ) : activeTab === "posts" ? (
+        postsQuery.isLoading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#10B981" />
+          </View>
+        ) : (
+          <FlashList
+            data={posts}
+            keyExtractor={(item: AppBskyFeedDefs.PostView, index) => `${item.uri}-${index}`}
+            estimatedItemSize={200}
+            renderItem={({ item }: { item: AppBskyFeedDefs.PostView }) => (
+              <PostRow 
+                post={item}
+                onPress={() => {
+                  // Extract rkey from URI: at://did/app.bsky.feed.post/rkey
+                  const parts = item.uri.split('/');
+                  const rkey = parts[parts.length - 1];
+                  router.push(`/post/${rkey}?did=${encodeURIComponent(item.author.did)}`);
+                }}
+                onAuthorPress={() => router.push(`/user/${item.author.handle}`)}
+              />
+            )}
+            onEndReached={() => {
+              if (postsQuery.hasNextPage && !postsQuery.isFetchingNextPage) {
+                postsQuery.fetchNextPage();
+              }
+            }}
+            onEndReachedThreshold={0.5}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            ListEmptyComponent={
+              <View className="flex-1 items-center justify-center py-20">
+                <FileText size={48} color="#6B7280" />
+                <Text className="text-text-primary text-lg font-semibold mt-4">
+                  No posts found
+                </Text>
+                <Text className="text-text-muted text-center mt-2">
+                  No posts matching #{query} were found
+                </Text>
+              </View>
+            }
+            ListFooterComponent={
+              postsQuery.isFetchingNextPage ? (
+                <View className="py-4 items-center">
+                  <ActivityIndicator size="small" color="#10B981" />
+                </View>
+              ) : null
+            }
+          />
+        )
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#10B981" />
