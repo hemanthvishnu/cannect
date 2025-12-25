@@ -370,7 +370,7 @@ export default function FeedScreen() {
           className={`flex-1 py-3 items-center ${activeFeed === 'cannect' ? 'border-b-2 border-primary' : ''}`}
         >
           <Text className={`font-semibold ${activeFeed === 'cannect' ? 'text-primary' : 'text-text-muted'}`}>
-            🌿 Cannect
+            Cannect
           </Text>
         </Pressable>
         <Pressable 
