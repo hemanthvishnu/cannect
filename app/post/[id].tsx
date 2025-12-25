@@ -56,6 +56,7 @@ export default function PostDetailsScreen() {
             headerTitle: "Thread",
             headerStyle: { backgroundColor: "#0A0A0A" },
             headerTintColor: "#FAFAFA",
+            contentStyle: { backgroundColor: "#0A0A0A" },
             headerLeft: () => (
               <Pressable onPress={handleBack} className="p-2 -ml-2 active:opacity-70">
                 <ArrowLeft size={24} color="#FAFAFA" />
@@ -80,6 +81,7 @@ export default function PostDetailsScreen() {
             headerTitle: "Thread",
             headerStyle: { backgroundColor: "#0A0A0A" },
             headerTintColor: "#FAFAFA",
+            contentStyle: { backgroundColor: "#0A0A0A" },
             headerLeft: () => (
               <Pressable onPress={handleBack} className="p-2 -ml-2 active:opacity-70">
                 <ArrowLeft size={24} color="#FAFAFA" />
@@ -110,6 +112,7 @@ export default function PostDetailsScreen() {
           headerTitle: "Thread",
           headerStyle: { backgroundColor: "#0A0A0A" },
           headerTintColor: "#FAFAFA",
+          contentStyle: { backgroundColor: "#0A0A0A" },
           headerLeft: () => (
             <Pressable onPress={handleBack} className="p-2 -ml-2 active:opacity-70">
               <ArrowLeft size={24} color="#FAFAFA" />
