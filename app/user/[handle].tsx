@@ -104,6 +104,8 @@ function UserPost({
             <Image 
               source={{ uri: author.avatar }} 
               className="w-10 h-10 rounded-full bg-surface-elevated"
+              placeholder={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
+              placeholderContentFit="cover"
             />
           ) : (
             <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
@@ -140,8 +142,9 @@ function UserPost({
               {embedImages.length === 1 ? (
                 <Image 
                   source={{ uri: embedImages[0].thumb }} 
-                  className="w-full h-48 rounded-xl"
+                  className="w-full h-48 rounded-xl bg-surface-elevated"
                   contentFit="cover"
+                  placeholder={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
                 />
               ) : (
                 <View className="flex-row flex-wrap gap-1">
@@ -149,8 +152,9 @@ function UserPost({
                     <Image 
                       key={idx}
                       source={{ uri: img.thumb }} 
-                      className="w-[48%] h-32 rounded-lg"
+                      className="w-[48%] h-32 rounded-lg bg-surface-elevated"
                       contentFit="cover"
+                      placeholder={{ uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
                     />
                   ))}
                 </View>
@@ -424,10 +428,11 @@ export default function UserProfileScreen() {
         }}
       />
       
-      <FlashList
-        data={posts}
-        keyExtractor={(item, index) => `${item.post.uri}-${index}`}
-        estimatedItemSize={100}
+      <View className="flex-1">
+        <FlashList
+          data={posts}
+          keyExtractor={(item, index) => `${item.post.uri}-${index}`}
+          estimatedItemSize={150}
         ListHeaderComponent={
           <View>
             {/* Banner */}
@@ -593,6 +598,7 @@ export default function UserProfileScreen() {
           ) : null
         }
       />
+      </View>
 
       {/* Repost Menu */}
       <RepostMenu
