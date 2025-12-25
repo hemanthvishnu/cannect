@@ -5,13 +5,15 @@
  * Displays a single post thread using the DID and record key.
  */
 
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from "react-native";
+import { useState, useCallback } from "react";
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, TextInput, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ArrowLeft, Heart, MessageCircle, Repeat2, MoreHorizontal, Share } from "lucide-react-native";
+import { ArrowLeft, Heart, MessageCircle, Repeat2, MoreHorizontal, Share, Send } from "lucide-react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { usePostThread, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
+import { usePostThread, useLikePost, useUnlikePost, useRepost, useDeleteRepost, useCreatePost } from "@/lib/hooks";
+import { useAuthStore } from "@/lib/stores";
 import type { AppBskyFeedDefs, AppBskyFeedPost } from '@atproto/api';
 
 type PostView = AppBskyFeedDefs.PostView;
@@ -35,7 +37,17 @@ function formatNumber(num: number | undefined): string {
   return num.toString();
 }
 
-function ReplyPost({ post }: { post: PostView }) {
+function ReplyPost({ 
+  post,
+  onLike,
+  onRepost,
+  onReply,
+}: { 
+  post: PostView;
+  onLike: () => void;
+  onRepost: () => void;
+  onReply: () => void;
+}) {
   const record = post.record as AppBskyFeedPost.Record;
   const router = useRouter();
   
@@ -44,21 +56,27 @@ function ReplyPost({ post }: { post: PostView }) {
     const rkey = uriParts[uriParts.length - 1];
     router.push(`/post/${post.author.did}/${rkey}`);
   };
+
+  const handleAuthorPress = () => {
+    router.push(`/user/${post.author.handle}`);
+  };
   
   return (
     <Pressable onPress={handlePress} className="px-4 py-3 border-b border-border active:bg-surface-elevated">
       <View className="flex-row">
-        {post.author.avatar ? (
-          <Image 
-            source={{ uri: post.author.avatar }} 
-            className="w-10 h-10 rounded-full"
-            contentFit="cover"
-          />
-        ) : (
-          <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
-            <Text className="text-text-muted text-lg">{post.author.handle[0].toUpperCase()}</Text>
-          </View>
-        )}
+        <Pressable onPress={handleAuthorPress}>
+          {post.author.avatar ? (
+            <Image 
+              source={{ uri: post.author.avatar }} 
+              className="w-10 h-10 rounded-full"
+              contentFit="cover"
+            />
+          ) : (
+            <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
+              <Text className="text-text-muted text-lg">{post.author.handle[0].toUpperCase()}</Text>
+            </View>
+          )}
+        </Pressable>
         <View className="flex-1 ml-3">
           <View className="flex-row items-center">
             <Text className="font-semibold text-text-primary">
@@ -67,6 +85,30 @@ function ReplyPost({ post }: { post: PostView }) {
             <Text className="text-text-muted ml-1">@{post.author.handle}</Text>
           </View>
           <Text className="text-text-primary mt-1 leading-5">{record.text}</Text>
+          
+          {/* Actions */}
+          <View className="flex-row items-center mt-2 gap-5">
+            <Pressable onPress={onReply} className="flex-row items-center">
+              <MessageCircle size={16} color="#6B7280" />
+              <Text className="text-text-muted text-xs ml-1">{post.replyCount || ''}</Text>
+            </Pressable>
+            <Pressable onPress={onRepost} className="flex-row items-center">
+              <Repeat2 size={16} color={post.viewer?.repost ? "#10B981" : "#6B7280"} />
+              <Text className={`text-xs ml-1 ${post.viewer?.repost ? 'text-primary' : 'text-text-muted'}`}>
+                {post.repostCount || ''}
+              </Text>
+            </Pressable>
+            <Pressable onPress={onLike} className="flex-row items-center">
+              <Heart 
+                size={16} 
+                color={post.viewer?.like ? "#EF4444" : "#6B7280"}
+                fill={post.viewer?.like ? "#EF4444" : "none"}
+              />
+              <Text className={`text-xs ml-1 ${post.viewer?.like ? 'text-red-500' : 'text-text-muted'}`}>
+                {post.likeCount || ''}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Pressable>
@@ -76,6 +118,11 @@ function ReplyPost({ post }: { post: PostView }) {
 export default function PostDetailsScreen() {
   const { did, rkey } = useLocalSearchParams<{ did: string; rkey: string }>();
   const router = useRouter();
+  const { profile } = useAuthStore();
+  
+  // Reply state
+  const [replyText, setReplyText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Construct AT URI from did and rkey
   const atUri = did && rkey ? `at://${did}/app.bsky.feed.post/${rkey}` : "";
@@ -85,6 +132,7 @@ export default function PostDetailsScreen() {
   const unlikeMutation = useUnlikePost();
   const repostMutation = useRepost();
   const unrepostMutation = useDeleteRepost();
+  const createPostMutation = useCreatePost();
   
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -144,11 +192,84 @@ export default function PostDetailsScreen() {
     });
   };
 
+  const handleQuickReply = useCallback(async () => {
+    if (!thread?.post || !replyText.trim() || isSubmitting) return;
+    
+    const post = thread.post;
+    triggerHaptic();
+    setIsSubmitting(true);
+    
+    try {
+      // Get the root of the thread
+      const rootUri = (thread as any).parent?.post?.uri || post.uri;
+      const rootCid = (thread as any).parent?.post?.cid || post.cid;
+      
+      await createPostMutation.mutateAsync({
+        text: replyText.trim(),
+        reply: {
+          parent: { uri: post.uri, cid: post.cid },
+          root: { uri: rootUri, cid: rootCid },
+        },
+      });
+      
+      setReplyText("");
+      refetch(); // Refresh thread to show new reply
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      console.error('Failed to post reply:', err);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [thread, replyText, isSubmitting, createPostMutation, refetch]);
+
   const handleAuthorPress = () => {
     if (thread?.post) {
       router.push(`/user/${thread.post.author.handle}`);
     }
   };
+
+  // Handlers for reply items
+  const handleReplyLike = useCallback((replyPost: PostView) => {
+    triggerHaptic();
+    if (replyPost.viewer?.like) {
+      unlikeMutation.mutate(replyPost.viewer.like);
+    } else {
+      likeMutation.mutate({ uri: replyPost.uri, cid: replyPost.cid });
+    }
+  }, [likeMutation, unlikeMutation]);
+
+  const handleReplyRepost = useCallback((replyPost: PostView) => {
+    triggerHaptic();
+    if (replyPost.viewer?.repost) {
+      unrepostMutation.mutate(replyPost.viewer.repost);
+    } else {
+      repostMutation.mutate({ uri: replyPost.uri, cid: replyPost.cid });
+    }
+  }, [repostMutation, unrepostMutation]);
+
+  const handleReplyToReply = useCallback((replyPost: PostView) => {
+    triggerHaptic();
+    
+    // For replies, the root is the original post, parent is this reply
+    const rootUri = thread?.post?.uri || replyPost.uri;
+    const rootCid = thread?.post?.cid || replyPost.cid;
+    
+    router.push({
+      pathname: '/(tabs)/compose',
+      params: {
+        replyToUri: replyPost.uri,
+        replyToCid: replyPost.cid,
+        rootUri,
+        rootCid,
+      }
+    });
+  }, [router, thread]);
 
   // Loading state
   if (isLoading) {
@@ -329,11 +450,67 @@ export default function PostDetailsScreen() {
               Replies
             </Text>
             {replies.map((reply) => (
-              <ReplyPost key={reply.post.uri} post={reply.post} />
+              <ReplyPost 
+                key={reply.post.uri} 
+                post={reply.post}
+                onLike={() => handleReplyLike(reply.post)}
+                onRepost={() => handleReplyRepost(reply.post)}
+                onReply={() => handleReplyToReply(reply.post)}
+              />
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* Quick Reply Bar */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        <View className="flex-row items-center px-4 py-3 border-t border-border bg-background">
+          {/* User Avatar */}
+          {profile?.avatar ? (
+            <Image 
+              source={{ uri: profile.avatar }} 
+              className="w-8 h-8 rounded-full"
+              contentFit="cover"
+            />
+          ) : (
+            <View className="w-8 h-8 rounded-full bg-surface-elevated items-center justify-center">
+              <Text className="text-text-muted text-sm">
+                {(profile?.handle || '?')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          
+          {/* Input */}
+          <TextInput
+            value={replyText}
+            onChangeText={setReplyText}
+            placeholder="Write a reply..."
+            placeholderTextColor="#6B7280"
+            className="flex-1 mx-3 py-2 px-3 rounded-full bg-surface-elevated text-text-primary"
+            maxLength={300}
+            editable={!isSubmitting}
+          />
+          
+          {/* Send Button */}
+          <Pressable 
+            onPress={handleQuickReply}
+            disabled={!replyText.trim() || isSubmitting}
+            className={`p-2 rounded-full ${replyText.trim() && !isSubmitting ? 'bg-primary' : 'bg-surface-elevated'}`}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Send 
+                size={18} 
+                color={replyText.trim() ? "#fff" : "#6B7280"} 
+              />
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

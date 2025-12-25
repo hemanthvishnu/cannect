@@ -42,11 +42,15 @@ function FeedItem({
   onPress,
   onLike,
   onRepost,
+  onReply,
+  onAuthorPress,
 }: { 
   item: FeedViewPost;
   onPress: () => void;
   onLike: () => void;
   onRepost: () => void;
+  onReply: () => void;
+  onAuthorPress: () => void;
 }) {
   const post = item.post;
   const record = post.record as AppBskyFeedPost.Record;
@@ -76,7 +80,7 @@ function FeedItem({
 
       <View className="flex-row">
         {/* Avatar */}
-        <Pressable onPress={() => {}}>
+        <Pressable onPress={onAuthorPress}>
           {author.avatar ? (
             <Image 
               source={{ uri: author.avatar }} 
@@ -137,7 +141,10 @@ function FeedItem({
           {/* Actions */}
           <View className="flex-row items-center mt-3 gap-6">
             {/* Reply */}
-            <Pressable className="flex-row items-center">
+            <Pressable 
+              onPress={onReply}
+              className="flex-row items-center"
+            >
               <MessageCircle size={18} color="#6B7280" />
               <Text className="text-text-muted text-sm ml-1">
                 {post.replyCount || ''}
@@ -267,6 +274,29 @@ export default function FeedScreen() {
     router.push(`/post/${post.author.did}/${rkey}`);
   }, [router]);
 
+  const handleAuthorPress = useCallback((post: PostView) => {
+    router.push(`/user/${post.author.handle}`);
+  }, [router]);
+
+  const handleReply = useCallback((post: PostView) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    // Navigate to compose with reply params
+    const uriParts = post.uri.split('/');
+    const rkey = uriParts[uriParts.length - 1];
+    router.push({
+      pathname: '/compose',
+      params: {
+        replyToUri: post.uri,
+        replyToCid: post.cid,
+        rootUri: post.uri,
+        rootCid: post.cid,
+      }
+    });
+  }, [router]);
+
   if (activeQuery.isError) {
     return (
       <SafeAreaView className="flex-1 bg-background items-center justify-center px-6">
@@ -322,6 +352,8 @@ export default function FeedScreen() {
                 onPress={() => handlePostPress(item.post)}
                 onLike={() => handleLike(item.post)}
                 onRepost={() => handleRepost(item.post)}
+                onReply={() => handleReply(item.post)}
+                onAuthorPress={() => handleAuthorPress(item.post)}
               />
             )}
             estimatedItemSize={200}
