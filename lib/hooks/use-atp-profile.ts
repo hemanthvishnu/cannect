@@ -26,7 +26,9 @@ export function useProfile(actor: string | undefined) {
       return result.data;
     },
     enabled: !!actor,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 30, // 30 seconds - profile counts change often
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnWindowFocus: true, // Refetch when user returns to app (PWA)
   });
 }
 
@@ -44,7 +46,9 @@ export function useMyProfile() {
       return result.data;
     },
     enabled: !!did && isAuthenticated,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 30, // 30 seconds - profile counts change often
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnWindowFocus: true, // Refetch when user returns to app (PWA)
   });
 }
 
