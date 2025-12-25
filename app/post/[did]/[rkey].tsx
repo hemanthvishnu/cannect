@@ -145,28 +145,24 @@ function ParentPost({
     : [];
   
   return (
-    <Pressable onPress={handlePress} className="px-4 pt-3 active:bg-surface-elevated">
+    <Pressable onPress={handlePress} className="px-4 py-3 active:bg-surface-elevated">
       <View className="flex-row">
-        {/* Avatar with thread line */}
-        <View className="items-center">
-          <Pressable onPress={handleAuthorPress}>
-            {post.author.avatar ? (
-              <Image 
-                source={{ uri: post.author.avatar }} 
-                className="w-10 h-10 rounded-full"
-                contentFit="cover"
-              />
-            ) : (
-              <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
-                <Text className="text-text-muted text-lg">{post.author.handle[0].toUpperCase()}</Text>
-              </View>
-            )}
-          </Pressable>
-          {/* Thread connecting line */}
-          <View className="w-0.5 flex-1 bg-border mt-2 mb-0" style={{ minHeight: 20 }} />
-        </View>
+        {/* Avatar */}
+        <Pressable onPress={handleAuthorPress}>
+          {post.author.avatar ? (
+            <Image 
+              source={{ uri: post.author.avatar }} 
+              className="w-10 h-10 rounded-full"
+              contentFit="cover"
+            />
+          ) : (
+            <View className="w-10 h-10 rounded-full bg-surface-elevated items-center justify-center">
+              <Text className="text-text-muted text-lg">{post.author.handle[0].toUpperCase()}</Text>
+            </View>
+          )}
+        </Pressable>
         
-        <View className="flex-1 ml-3 pb-3">
+        <View className="flex-1 ml-3">
           <View className="flex-row items-center flex-wrap">
             <Text className="font-semibold text-text-primary">
               {post.author.displayName || post.author.handle}
@@ -225,7 +221,7 @@ function collectParents(thread: ThreadViewPost): PostView[] {
 export default function PostDetailsScreen() {
   const { did, rkey } = useLocalSearchParams<{ did: string; rkey: string }>();
   const router = useRouter();
-  const { profile } = useAuthStore();
+  const { profile, session, handle } = useAuthStore();
   
   // Reply state
   const [replyText, setReplyText] = useState("");
@@ -467,7 +463,7 @@ export default function PostDetailsScreen() {
       <ScrollView className="flex-1">
         {/* Parent Posts (Thread Ancestors) */}
         {hasParents && (
-          <View className="border-b border-border">
+          <View>
             {parents.map((parentPost, index) => (
               <ParentPost 
                 key={parentPost.uri} 
@@ -609,9 +605,9 @@ export default function PostDetailsScreen() {
               contentFit="cover"
             />
           ) : (
-            <View className="w-8 h-8 rounded-full bg-surface-elevated items-center justify-center">
-              <Text className="text-text-muted text-sm">
-                {(profile?.handle || '?')[0].toUpperCase()}
+            <View className="w-8 h-8 rounded-full bg-primary items-center justify-center">
+              <Text className="text-white text-sm font-semibold">
+                {(handle || profile?.handle || 'U')[0].toUpperCase()}
               </Text>
             </View>
           )}
