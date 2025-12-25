@@ -109,7 +109,7 @@ export default function SearchScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search Bluesky..."
+            placeholder="Search Cannect..."
             placeholderTextColor="#6B7280"
             className="flex-1 ml-2 text-text-primary text-base py-1"
             autoCapitalize="none"
@@ -147,7 +147,7 @@ export default function SearchScreen() {
       {!hasQuery ? (
         <View className="flex-1 items-center justify-center px-6">
           <Users size={48} color="#6B7280" />
-          <Text className="text-text-primary text-lg font-semibold mt-4">Search Bluesky</Text>
+          <Text className="text-text-primary text-lg font-semibold mt-4">Search Cannect</Text>
           <Text className="text-text-muted text-center mt-2">
             Find users and posts across the network
           </Text>
