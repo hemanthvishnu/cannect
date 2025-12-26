@@ -14,7 +14,7 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { X, Image as ImageIcon } from "lucide-react-native";
+import { X, Image as ImageIcon, Video as VideoIcon } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from "expo-router";
@@ -41,6 +41,7 @@ export default function ComposeScreen() {
   
   const [content, setContent] = useState("");
   const [images, setImages] = useState<{ uri: string; mimeType: string }[]>([]);
+  const [video, setVideo] = useState<{ uri: string; mimeType: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -50,9 +51,10 @@ export default function ComposeScreen() {
   const remainingChars = MAX_LENGTH - content.length;
   const isOverLimit = remainingChars < 0;
   const canPost = content.trim().length > 0 && !isOverLimit && !createPostMutation.isPending && !isUploading;
+  const hasMedia = images.length > 0 || video !== null;
 
   const handlePickImage = async () => {
-    if (images.length >= 4) return;
+    if (images.length >= 4 || video) return; // Can't add images if video exists
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -70,8 +72,30 @@ export default function ComposeScreen() {
     }
   };
 
+  const handlePickVideo = async () => {
+    if (images.length > 0 || video) return; // Can't add video if images exist or video already selected
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsMultipleSelection: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setVideo({
+        uri: asset.uri,
+        mimeType: asset.mimeType || 'video/mp4',
+      });
+    }
+  };
+
   const removeImage = (index: number) => {
     setImages(images.filter((_, i) => i !== index));
+  };
+
+  const removeVideo = () => {
+    setVideo(null);
   };
 
   const handlePost = useCallback(async () => {
@@ -85,10 +109,26 @@ export default function ComposeScreen() {
     
     try {
       let embed;
+      setIsUploading(true);
       
+      // Upload video if any (video takes priority, can't have both)
+      if (video) {
+        // Fetch the video data
+        const response = await fetch(video.uri);
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        // Upload to Bluesky
+        const uploadResult = await atproto.uploadBlob(uint8Array, video.mimeType);
+        
+        embed = {
+          $type: 'app.bsky.embed.video',
+          video: uploadResult.data.blob,
+        };
+      }
       // Upload images if any
-      if (images.length > 0) {
-        setIsUploading(true);
+      else if (images.length > 0) {
         const uploadedImages = [];
         
         for (const image of images) {
@@ -106,13 +146,13 @@ export default function ComposeScreen() {
           });
         }
         
-        setIsUploading(false);
-        
         embed = {
           $type: 'app.bsky.embed.images',
           images: uploadedImages,
         };
       }
+      
+      setIsUploading(false);
 
       // Build reply reference if this is a reply
       const reply = isReply ? {
@@ -133,6 +173,7 @@ export default function ComposeScreen() {
       
       setContent("");
       setImages([]);
+      setVideo(null);
       router.back();
     } catch (err: any) {
       setError(err.message || "Failed to create post");
@@ -141,10 +182,10 @@ export default function ComposeScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     }
-  }, [content, images, isAuthenticated, isReply, replyToUri, replyToCid, rootUri, rootCid, createPostMutation, canPost]);
+  }, [content, images, video, isAuthenticated, isReply, replyToUri, replyToCid, rootUri, rootCid, createPostMutation, canPost]);
 
   const handleClose = () => {
-    if (content.trim() || images.length > 0) {
+    if (content.trim() || images.length > 0 || video) {
       // Could show confirmation dialog here
     }
     router.back();
@@ -231,6 +272,22 @@ export default function ComposeScreen() {
               ))}
             </View>
           )}
+
+          {/* Video Preview */}
+          {video && (
+            <View className="mt-4 ml-13 relative">
+              <View className="w-40 h-24 rounded-lg bg-surface-elevated items-center justify-center border border-border">
+                <VideoIcon size={32} color="#10B981" />
+                <Text className="text-text-muted text-xs mt-1">Video selected</Text>
+              </View>
+              <Pressable
+                onPress={removeVideo}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-black/70 rounded-full items-center justify-center"
+              >
+                <X size={14} color="#fff" />
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* Bottom Bar */}
@@ -239,10 +296,17 @@ export default function ComposeScreen() {
           <View className="flex-row gap-4">
             <Pressable 
               onPress={handlePickImage}
-              disabled={images.length >= 4}
-              className={images.length >= 4 ? 'opacity-50' : ''}
+              disabled={images.length >= 4 || video !== null}
+              className={images.length >= 4 || video !== null ? 'opacity-50' : ''}
             >
               <ImageIcon size={24} color="#10B981" />
+            </Pressable>
+            <Pressable 
+              onPress={handlePickVideo}
+              disabled={images.length > 0 || video !== null}
+              className={images.length > 0 || video !== null ? 'opacity-50' : ''}
+            >
+              <VideoIcon size={24} color="#3B82F6" />
             </Pressable>
           </View>
 
