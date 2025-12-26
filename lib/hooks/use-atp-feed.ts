@@ -41,6 +41,26 @@ export function useTimeline() {
 }
 
 /**
+ * Get Cannect Following feed - posts from people you follow
+ * Uses our feed generator which includes migrated posts
+ */
+export function useCannectFollowing() {
+  const { isAuthenticated } = useAuthStore();
+
+  return useInfiniteQuery({
+    queryKey: ['cannectFollowing'],
+    queryFn: async ({ pageParam }) => {
+      const result = await atproto.getCannectFollowingFeed(pageParam, 30);
+      return result.data;
+    },
+    getNextPageParam: (lastPage) => lastPage.cursor,
+    initialPageParam: undefined as string | undefined,
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60, // 1 minute
+  });
+}
+
+/**
  * Get Cannect feed - cannabis content from the network + cannect.space users
  * This is our custom curated feed combining:
  * - Cannabis-related posts from the entire AT Protocol network

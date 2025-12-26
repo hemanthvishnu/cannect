@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { Leaf, Heart, MessageCircle, Repeat2, Share } from "lucide-react-native";
 import { useState, useMemo, useCallback } from "react";
 import * as Haptics from "expo-haptics";
-import { useTimeline, useCannectFeed, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
+import { useCannectFollowing, useCannectFeed, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RepostMenu } from "@/components/social/RepostMenu";
@@ -223,7 +223,7 @@ export default function FeedScreen() {
   
   // Both feeds - only active one will fetch
   const cannectFeedQuery = useCannectFeed();
-  const followingQuery = useTimeline();
+  const followingQuery = useCannectFollowing();
   
   // Select active query based on tab
   const activeQuery = activeFeed === 'cannect' ? cannectFeedQuery : followingQuery;

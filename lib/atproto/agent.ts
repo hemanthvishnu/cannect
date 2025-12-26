@@ -496,6 +496,7 @@ export async function getUnreadCount() {
  * Only accessible to *.cannect.space users
  */
 const CANNECT_FEED_URI = 'at://did:plc:ubkp6dfvxif7rmexyat5np6e/app.bsky.feed.generator/cannect';
+const CANNECT_FOLLOWING_URI = 'at://did:plc:ubkp6dfvxif7rmexyat5np6e/app.bsky.feed.generator/following';
 
 /**
  * Get the Cannect feed from our feed generator
@@ -524,6 +525,39 @@ export async function getCannectFeed(cursor?: string, limit = 30) {
   } catch (error: any) {
     console.error('[Cannect Feed] Failed to load feed:', error?.message || error);
     // Return empty feed on error
+    return {
+      data: {
+        feed: [],
+        cursor: undefined,
+      }
+    };
+  }
+}
+
+/**
+ * Get the Cannect Following feed from our feed generator
+ * 
+ * Shows posts from our database, filtered to only users you follow.
+ * Includes migrated posts that Bluesky's timeline doesn't have.
+ */
+export async function getCannectFollowingFeed(cursor?: string, limit = 30) {
+  const bskyAgent = getAgent();
+  
+  try {
+    const result = await bskyAgent.app.bsky.feed.getFeed({
+      feed: CANNECT_FOLLOWING_URI,
+      cursor,
+      limit,
+    });
+    
+    return {
+      data: {
+        feed: result.data.feed,
+        cursor: result.data.cursor,
+      }
+    };
+  } catch (error: any) {
+    console.error('[Cannect Following] Failed to load feed:', error?.message || error);
     return {
       data: {
         feed: [],
