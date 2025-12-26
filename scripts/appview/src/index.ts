@@ -55,6 +55,16 @@ interface FeedViewPost {
 
 // Helper: Convert DB post to PostView
 function toPostView(post: DbPost & Partial<DbProfile>, counts: { likes: number; reposts: number; replies: number }): PostView {
+  // Avatar could be a full URL (from Bluesky CDN) or a CID
+  let avatarUrl: string | undefined
+  if (post.avatar_cid) {
+    if (post.avatar_cid.startsWith('http')) {
+      avatarUrl = post.avatar_cid
+    } else {
+      avatarUrl = `${config.cannectPds}/xrpc/com.atproto.sync.getBlob?did=${post.author_did}&cid=${post.avatar_cid}`
+    }
+  }
+
   return {
     uri: post.uri,
     cid: post.cid,
@@ -62,7 +72,7 @@ function toPostView(post: DbPost & Partial<DbProfile>, counts: { likes: number; 
       did: post.author_did,
       handle: post.handle || post.author_did,
       displayName: post.display_name || undefined,
-      avatar: post.avatar_cid ? `${config.cannectPds}/xrpc/com.atproto.sync.getBlob?did=${post.author_did}&cid=${post.avatar_cid}` : undefined,
+      avatar: avatarUrl,
     },
     record: {
       $type: 'app.bsky.feed.post',
