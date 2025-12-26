@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore } from '@/lib/stores/auth-store';
+import { useAuthStore } from '@/lib/stores';
 
 // Push VPS API endpoint for push subscriptions
 const PUSH_API_URL = process.env.EXPO_PUBLIC_PUSH_API_URL || 'https://push.cannect.space';
