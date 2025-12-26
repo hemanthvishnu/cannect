@@ -4,16 +4,18 @@
  * Handles web push subscription for browsers including iOS Safari 16.4+
  * iOS requires: PWA must be installed to home screen first
  * 
- * NOTE: For server-initiated push, you need to send the subscription
- * to your backend. This hook stores locally for now.
+ * Sends subscription to Feed VPS for server-initiated push notifications.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthStore } from '@/lib/stores/auth-store';
 
-// VAPID public key - must match server's VAPID_PUBLIC_KEY
-// Generate with: npx web-push generate-vapid-keys
+// Feed VPS API endpoint for push subscriptions
+const PUSH_API_URL = process.env.EXPO_PUBLIC_FEED_API_URL || 'https://feed.cannect.space';
+
+// VAPID public key - fetched from server or fallback to env
 const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY || '';
 
 const SUBSCRIPTION_KEY = 'cannect_web_push_subscription';
@@ -70,6 +72,7 @@ function isPushSupported(): boolean {
 }
 
 export function useWebPush() {
+  const { did } = useAuthStore();
   const [state, setState] = useState<WebPushState>({
     isSupported: false,
     isSubscribed: false,
@@ -166,11 +169,28 @@ export function useWebPush() {
         await AsyncStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify(subscriptionJSON));
         console.log('[WebPush] Subscription saved locally');
         
-        // TODO: Send subscription to your backend for server-initiated push
-        // await fetch('/api/push/subscribe', {
-        //   method: 'POST',
-        //   body: JSON.stringify(subscriptionJSON),
-        // });
+        // Send subscription to Feed VPS for server-initiated push
+        if (did) {
+          try {
+            const response = await fetch(`${PUSH_API_URL}/api/push/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userDid: did,
+                subscription: subscriptionJSON,
+              }),
+            });
+            
+            if (response.ok) {
+              console.log('[WebPush] Subscription registered with server');
+            } else {
+              console.error('[WebPush] Failed to register with server:', response.status);
+            }
+          } catch (err) {
+            console.error('[WebPush] Server registration error:', err);
+            // Continue - local subscription still works for testing
+          }
+        }
       }
 
       setState(s => ({ 
@@ -206,6 +226,18 @@ export function useWebPush() {
       const subscription = await registration.pushManager.getSubscription();
 
       if (subscription) {
+        // Notify server to remove subscription
+        try {
+          await fetch(`${PUSH_API_URL}/api/push/unsubscribe`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          });
+          console.log('[WebPush] Server notified of unsubscribe');
+        } catch (err) {
+          console.error('[WebPush] Failed to notify server:', err);
+        }
+
         await subscription.unsubscribe();
       }
 
