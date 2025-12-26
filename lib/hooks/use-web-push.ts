@@ -54,7 +54,11 @@ function isIOSInstalledPWA(): boolean {
   if (typeof window === 'undefined') return false;
   
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  // Check both methods - standalone property and display-mode media query
+  const isStandalone = (window.navigator as any).standalone === true || 
+    window.matchMedia('(display-mode: standalone)').matches;
+  
+  console.log('[WebPush] iOS detection:', { isIOS, isStandalone, standalone: (window.navigator as any).standalone });
   
   return isIOS && isStandalone;
 }
@@ -64,9 +68,14 @@ function isIOSInstalledPWA(): boolean {
  */
 function isPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  if (!('serviceWorker' in navigator)) return false;
-  if (!('PushManager' in window)) return false;
-  if (!('Notification' in window)) return false;
+  
+  const hasSW = 'serviceWorker' in navigator;
+  const hasPush = 'PushManager' in window;
+  const hasNotification = 'Notification' in window;
+  
+  console.log('[WebPush] Support check:', { hasSW, hasPush, hasNotification });
+  
+  if (!hasSW || !hasPush || !hasNotification) return false;
   
   return true;
 }
