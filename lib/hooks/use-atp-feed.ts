@@ -97,12 +97,14 @@ export function useTimeline() {
 /**
  * Top cannabis feeds on Bluesky - aggregated for Global feed
  * Multiple feeds combined for diverse, high-quality content
+ * Sorted by likes/popularity - feeds may go offline, handled gracefully
  */
 const CANNABIS_FEEDS = [
+  // Top 5 (most popular)
   {
     name: 'The Weed Feed',
     uri: 'at://did:plc:kil6rach2ost5soyq4qc3yyj/app.bsky.feed.generator/aaacchngc7ky4',
-    likes: 307,
+    likes: 308,
   },
   {
     name: 'WeedMob',
@@ -112,23 +114,72 @@ const CANNABIS_FEEDS = [
   {
     name: 'Cannabis Community 420',
     uri: 'at://did:plc:ofa3uzadvnxtusxbpr6yvdck/app.bsky.feed.generator/aaanpawlgfvb6',
-    likes: 79,
+    likes: 76,
   },
   {
     name: 'Weedsky',
     uri: 'at://did:plc:icrcghfflckt22o7dhyyuzfl/app.bsky.feed.generator/aaakxsdsjsy64',
-    likes: 71,
+    likes: 69,
   },
   {
     name: 'Cannabis',
     uri: 'at://did:plc:lr32wj3jvvt3reue6wexabfh/app.bsky.feed.generator/aaahmzu672jva',
     likes: 51,
   },
+  // Additional feeds
+  {
+    name: 'Maconha',
+    uri: 'at://did:plc:lqzay5ya6b7gwyn45qbl2s4x/app.bsky.feed.generator/maconha',
+    likes: 44,
+  },
+  {
+    name: 'The Weed Feed 🥦💚',
+    uri: 'at://did:plc:pn26lakhwjdhgcwmjth3xfnn/app.bsky.feed.generator/aaaco4ykybqh4',
+    likes: 41,
+  },
+  {
+    name: 'Skyhigh',
+    uri: 'at://did:plc:yyds2w4plzj2atyn7yirzxo4/app.bsky.feed.generator/aaadytslg5w5s',
+    likes: 29,
+  },
+  {
+    name: 'Cannabis+ (DE)',
+    uri: 'at://did:plc:mdn3kmif4emrl5ipgjwgi3bs/app.bsky.feed.generator/feed420',
+    likes: 27,
+  },
+  {
+    name: '420Sky',
+    uri: 'at://did:plc:wlmqo4tsne55b7acvmmygswh/app.bsky.feed.generator/aaak3xiau2t3y',
+    likes: 20,
+  },
+  {
+    name: 'Black Cannabis Community',
+    uri: 'at://did:plc:v42wslr7d5oixwivjwwlg2ra/app.bsky.feed.generator/blackcannabis',
+    likes: 18,
+  },
+  {
+    name: 'Weed Memes',
+    uri: 'at://did:plc:23mflh3oyzajrpua5dmy7cj5/app.bsky.feed.generator/aaaohjsoof6aa',
+    likes: 15,
+  },
+  {
+    name: 'CannabisSky',
+    uri: 'at://did:plc:pvyuheklxfqw6cdnmam2u5yw/app.bsky.feed.generator/aaagareaigvvg',
+    likes: 14,
+  },
+  {
+    name: 'Cannabis Cultivators 🍃',
+    uri: 'at://did:plc:nukogzpij6wd4cx35lhonnaq/app.bsky.feed.generator/aaag6zmge756k',
+    likes: 12,
+  },
 ];
+
+// Track feed failures to avoid spamming logs
+const feedFailures = new Map<string, number>();
 
 /**
  * Get Global feed - aggregated cannabis content from multiple Bluesky feeds
- * Fetches from top 5 cannabis feeds, deduplicates, and sorts by recency
+ * Fetches from all cannabis feeds, deduplicates, and sorts by recency
  */
 export function useGlobalFeed() {
   const { isAuthenticated } = useAuthStore();
@@ -148,15 +199,25 @@ export function useGlobalFeed() {
             const result = await atproto.getExternalFeed(
               feed.uri, 
               cursors[feed.uri], 
-              10  // Get 10 from each feed
+              8  // Get 8 from each feed (14 feeds * 8 = 112 max posts)
             );
+            // Reset failure count on success
+            feedFailures.delete(feed.uri);
             return { 
               feedUri: feed.uri, 
               data: result.data,
               name: feed.name 
             };
-          } catch (error) {
-            console.warn(`Failed to fetch ${feed.name}:`, error);
+          } catch (error: any) {
+            // Track failures - only log first occurrence to avoid spam
+            const failCount = (feedFailures.get(feed.uri) || 0) + 1;
+            feedFailures.set(feed.uri, failCount);
+            
+            if (failCount === 1) {
+              // Only log on first failure
+              const status = error?.status || error?.response?.status || 'unknown';
+              console.log(`[Feed] ${feed.name} unavailable (${status})`);
+            }
             return null;
           }
         })
