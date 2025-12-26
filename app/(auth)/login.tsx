@@ -74,6 +74,9 @@ export default function LoginScreen() {
                   <Text className="text-primary text-sm">Forgot password?</Text>
                 </Pressable>
               </Link>
+              <Text className="text-text-muted text-xs text-center mt-2">
+                We've migrated to a new system. Simply reset your password to continue.
+              </Text>
             </View>
           </View>
           <View className="px-6 pb-8">
