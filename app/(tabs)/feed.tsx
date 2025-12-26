@@ -1,9 +1,10 @@
 /**
  * Feed Screen - Pure AT Protocol
  * 
- * Displays two feeds:
- * - Cannect: Posts from cannect.space users (our community)
- * - Global: Posts from the Bluesky network (people you follow)
+ * Displays three feeds:
+ * - Global: Cannabis content from Bluesky network (aggregated feeds)
+ * - Local: Posts from cannect.space users (our community)
+ * - Following: Posts from users you follow
  */
 
 import { View, Text, RefreshControl, ActivityIndicator, Platform, Pressable, Image, Share as RNShare } from "react-native";
@@ -13,13 +14,13 @@ import { useRouter } from "expo-router";
 import { Leaf, Heart, MessageCircle, Repeat2, Share } from "lucide-react-native";
 import { useState, useMemo, useCallback } from "react";
 import * as Haptics from "expo-haptics";
-import { useCannectFeed, useGlobalFeed, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
+import { useCannectFeed, useGlobalFeed, useTimeline, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RepostMenu } from "@/components/social/RepostMenu";
 import type { AppBskyFeedDefs, AppBskyFeedPost } from '@atproto/api';
 
-type FeedType = 'cannect' | 'global';
+type FeedType = 'global' | 'local' | 'following';
 type FeedViewPost = AppBskyFeedDefs.FeedViewPost;
 type PostView = AppBskyFeedDefs.PostView;
 
@@ -215,18 +216,23 @@ function FeedSkeleton() {
 export default function FeedScreen() {
   const router = useRouter();
   const { did } = useAuthStore();
-  const [activeFeed, setActiveFeed] = useState<FeedType>('cannect');
+  const [activeFeed, setActiveFeed] = useState<FeedType>('global');
   
   // Repost menu state
   const [repostMenuVisible, setRepostMenuVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   
-  // Both feeds - only active one will fetch
-  const cannectFeedQuery = useCannectFeed();
+  // All three feeds
   const globalQuery = useGlobalFeed();
+  const localQuery = useCannectFeed();
+  const followingQuery = useTimeline();
   
   // Select active query based on tab
-  const activeQuery = activeFeed === 'cannect' ? cannectFeedQuery : globalQuery;
+  const activeQuery = activeFeed === 'global' 
+    ? globalQuery 
+    : activeFeed === 'local' 
+      ? localQuery 
+      : followingQuery;
   
   const likeMutation = useLikePost();
   const unlikeMutation = useUnlikePost();
@@ -366,19 +372,27 @@ export default function FeedScreen() {
       {/* Feed Tabs */}
       <View className="flex-row border-b border-border">
         <Pressable 
-          onPress={() => handleTabChange('cannect')}
-          className={`flex-1 py-3 items-center ${activeFeed === 'cannect' ? 'border-b-2 border-primary' : ''}`}
-        >
-          <Text className={`font-semibold ${activeFeed === 'cannect' ? 'text-primary' : 'text-text-muted'}`}>
-            Cannect
-          </Text>
-        </Pressable>
-        <Pressable 
           onPress={() => handleTabChange('global')}
           className={`flex-1 py-3 items-center ${activeFeed === 'global' ? 'border-b-2 border-primary' : ''}`}
         >
           <Text className={`font-semibold ${activeFeed === 'global' ? 'text-primary' : 'text-text-muted'}`}>
             Global
+          </Text>
+        </Pressable>
+        <Pressable 
+          onPress={() => handleTabChange('local')}
+          className={`flex-1 py-3 items-center ${activeFeed === 'local' ? 'border-b-2 border-primary' : ''}`}
+        >
+          <Text className={`font-semibold ${activeFeed === 'local' ? 'text-primary' : 'text-text-muted'}`}>
+            Local
+          </Text>
+        </Pressable>
+        <Pressable 
+          onPress={() => handleTabChange('following')}
+          className={`flex-1 py-3 items-center ${activeFeed === 'following' ? 'border-b-2 border-primary' : ''}`}
+        >
+          <Text className={`font-semibold ${activeFeed === 'following' ? 'text-primary' : 'text-text-muted'}`}>
+            Following
           </Text>
         </Pressable>
       </View>
@@ -423,9 +437,11 @@ export default function FeedScreen() {
             ListEmptyComponent={
               <View className="flex-1 items-center justify-center py-20">
                 <Text className="text-text-muted text-center">
-                  {activeFeed === 'cannect' 
-                    ? 'No cannabis content found.\nBe the first to post!' 
-                    : 'Your timeline is empty.\nFollow some people to see their posts!'}
+                  {activeFeed === 'global' 
+                    ? 'No cannabis content found.\nCheck back later!' 
+                    : activeFeed === 'local'
+                      ? 'No posts from Cannect users yet.\nBe the first to post!'
+                      : 'Your timeline is empty.\nFollow some people to see their posts!'}
                 </Text>
               </View>
             }
