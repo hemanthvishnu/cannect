@@ -108,10 +108,7 @@ function FeedItem({
   const recordWithMediaQuote = recordWithMedia?.record?.record;
 
   return (
-    <Pressable 
-      onPress={onPress}
-      className="px-4 py-3 border-b border-border active:bg-surface-elevated"
-    >
+    <View className="px-4 py-3 border-b border-border">
       {/* Repost indicator */}
       {isRepost && repostBy && (
         <View className="flex-row items-center mb-2 pl-10">
@@ -138,9 +135,9 @@ function FeedItem({
         </Pressable>
 
         {/* Content */}
-        <View className="flex-1 ml-3">
-          {/* Header - Row 1: Name and Time */}
-          <View className="flex-row items-center">
+        <Pressable className="flex-1 ml-3" onPress={onPress}>
+          {/* Header - Author info (clickable to profile) */}
+          <Pressable onPress={onAuthorPress} className="flex-row items-center flex-wrap">
             <Text className="font-semibold text-text-primary flex-shrink" numberOfLines={1}>
               {author.displayName || author.handle}
             </Text>
@@ -148,11 +145,13 @@ function FeedItem({
             <Text className="text-text-muted flex-shrink-0">
               {formatTime(record.createdAt)}
             </Text>
-          </View>
-          {/* Header - Row 2: Handle */}
-          <Text className="text-text-muted text-sm" numberOfLines={1}>
-            @{author.handle}
-          </Text>
+          </Pressable>
+          {/* Handle (clickable to profile) */}
+          <Pressable onPress={onAuthorPress}>
+            <Text className="text-text-muted text-sm" numberOfLines={1}>
+              @{author.handle}
+            </Text>
+          </Pressable>
 
           {/* Post text */}
           <Text className="text-text-primary mt-1 leading-5">
@@ -396,9 +395,9 @@ function FeedItem({
               <MoreHorizontal size={18} color="#6B7280" />
             </Pressable>
           </View>
-        </View>
+        </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
