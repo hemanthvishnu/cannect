@@ -150,7 +150,7 @@ export function useGlobalFeed() {
 
 /**
  * Get Cannect feed - posts from Cannect PDS users
- * Fetches directly from Cannect users' author feeds (bypasses search API issues)
+ * Fetches from ALL users, sorts globally by date, then paginates
  */
 export function useCannectFeed() {
   const { isAuthenticated } = useAuthStore();
@@ -164,43 +164,52 @@ export function useCannectFeed() {
         return { feed: [], cursor: undefined };
       }
       
-      // Parse cursor to get offset
-      const offset = pageParam ? parseInt(pageParam, 10) : 0;
-      const pageSize = 20;
-      
-      // Get posts from multiple users
-      const userSlice = dids.slice(offset, offset + 10);
-      
-      const results = await Promise.all(
-        userSlice.map(async (did) => {
+      // Fetch recent posts from ALL users in parallel
+      // Get 3 posts per user to keep it fast (86 users × 3 = ~258 posts max)
+      const results = await Promise.allSettled(
+        dids.map(async (did) => {
           try {
-            const feed = await atproto.getAuthorFeed(did, undefined, 5, 'posts_no_replies');
-            return feed.data.feed.map(item => item);
+            const feed = await atproto.getAuthorFeed(did, undefined, 3, 'posts_no_replies');
+            return feed.data.feed;
           } catch {
             return [];
           }
         })
       );
       
-      // Flatten and sort by date
-      const allPosts = results.flat();
+      // Collect all posts
+      const allPosts: FeedViewPost[] = [];
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          allPosts.push(...result.value);
+        }
+      }
+      
+      // Sort ALL posts by date (globally)
       const sorted = allPosts.sort((a, b) => 
         new Date(b.post.indexedAt).getTime() - new Date(a.post.indexedAt).getTime()
       );
       
+      // Parse cursor for pagination through sorted results
+      const offset = pageParam ? parseInt(pageParam, 10) : 0;
+      const pageSize = 20;
+      
+      // Get the page slice
+      const pageSlice = sorted.slice(offset, offset + pageSize);
+      
       // Calculate next cursor
-      const nextOffset = offset + 10;
-      const hasMore = nextOffset < dids.length;
+      const nextOffset = offset + pageSize;
+      const hasMore = nextOffset < sorted.length;
       
       return {
-        feed: sorted.slice(0, pageSize),
+        feed: pageSlice,
         cursor: hasMore ? String(nextOffset) : undefined,
       };
     },
     getNextPageParam: (lastPage) => lastPage.cursor,
     initialPageParam: undefined as string | undefined,
     enabled: isAuthenticated,
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes - cache the sorted results
   });
 }
 
