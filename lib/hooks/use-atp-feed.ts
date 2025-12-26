@@ -491,14 +491,10 @@ export function useDeletePost() {
         });
       }
     },
-    onSettled: () => {
-      // Refetch to sync with server
-      queryClient.invalidateQueries({ queryKey: ['timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['cannectFeed'] });
-      queryClient.invalidateQueries({ queryKey: ['globalFeed'] });
-      queryClient.invalidateQueries({ queryKey: ['authorFeed'] });
-      queryClient.invalidateQueries({ queryKey: ['actorLikes'] });
-    },
+    // NOTE: We intentionally do NOT refetch after delete
+    // The optimistic update already removed the post from cache
+    // Refetching would bring back the post due to AppView caching delays
+    // The next natural refetch (pull-to-refresh, navigation, etc.) will sync
   });
 }
 
