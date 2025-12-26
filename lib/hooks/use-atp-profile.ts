@@ -219,8 +219,8 @@ export function useSearchUsers(query: string) {
 }
 
 /**
- * Get suggested users to follow - Cannect users only
- * Fetches users directly from Cannect PDS instead of relying on Bluesky's search index
+ * Get suggested users to follow - Cannect users first, then Bluesky suggestions
+ * Fetches users directly from Cannect PDS, falls back to Bluesky network suggestions
  */
 export function useSuggestedUsers() {
   const { isAuthenticated, did } = useAuthStore();
@@ -228,15 +228,31 @@ export function useSuggestedUsers() {
   return useQuery({
     queryKey: ['suggestedUsers', 'cannect', did],
     queryFn: async () => {
-      // Get all users directly from Cannect PDS
-      const profiles = await atproto.getCannectUsers(100);
+      // First, try to get users from Cannect PDS
+      const cannectProfiles = await atproto.getCannectUsers(100);
       
-      // Filter out current user and shuffle for variety
-      const otherUsers = profiles.filter(p => p.did !== did);
+      // Filter out current user
+      const cannectUsers = cannectProfiles.filter(p => p.did !== did);
       
-      // Sort by follower count descending, take top 25
-      const sorted = otherUsers.sort((a, b) => (b.followersCount || 0) - (a.followersCount || 0));
-      return sorted.slice(0, 25);
+      // Sort by follower count descending
+      const sortedCannect = cannectUsers.sort((a, b) => (b.followersCount || 0) - (a.followersCount || 0));
+      
+      // If we have Cannect users, return them
+      if (sortedCannect.length > 0) {
+        return sortedCannect.slice(0, 25);
+      }
+      
+      // Fallback: Get suggestions from Bluesky network
+      try {
+        const bskySuggestions = await atproto.getSuggestions(undefined, 50);
+        const bskyActors = bskySuggestions.data?.actors || [];
+        
+        // Filter out current user and return
+        return bskyActors.filter(p => p.did !== did).slice(0, 25);
+      } catch (error) {
+        console.error('[useSuggestedUsers] Bluesky suggestions fallback failed:', error);
+        return [];
+      }
     },
     enabled: isAuthenticated,
     staleTime: 1000 * 60 * 5, // 5 minutes
