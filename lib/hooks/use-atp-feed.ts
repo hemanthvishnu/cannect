@@ -362,7 +362,7 @@ export function useCreatePost() {
 }
 
 /**
- * Delete a post
+ * Delete a post with optimistic update
  */
 export function useDeletePost() {
   const queryClient = useQueryClient();
@@ -372,8 +372,71 @@ export function useDeletePost() {
       await atproto.deletePost(uri);
       return uri;
     },
-    onSuccess: () => {
+    onMutate: async (uri: string) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['timeline'] });
+      await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
+      await queryClient.cancelQueries({ queryKey: ['globalFeed'] });
+      await queryClient.cancelQueries({ queryKey: ['authorFeed'] });
+      await queryClient.cancelQueries({ queryKey: ['actorLikes'] });
+
+      // Snapshot previous values for rollback
+      const previousTimeline = queryClient.getQueryData(['timeline']);
+      const previousCannectFeed = queryClient.getQueryData(['cannectFeed']);
+      const previousGlobalFeed = queryClient.getQueryData(['globalFeed']);
+      const previousAuthorFeed = queryClient.getQueriesData({ queryKey: ['authorFeed'] });
+      const previousActorLikes = queryClient.getQueriesData({ queryKey: ['actorLikes'] });
+
+      // Helper to remove post from feed data
+      const removePostFromFeed = (old: any) => {
+        if (!old?.pages) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            feed: page.feed.filter((item: FeedViewPost) => item.post.uri !== uri),
+          })),
+        };
+      };
+
+      // Optimistically remove from all feeds
+      queryClient.setQueryData(['timeline'], removePostFromFeed);
+      queryClient.setQueryData(['cannectFeed'], removePostFromFeed);
+      queryClient.setQueryData(['globalFeed'], removePostFromFeed);
+      queryClient.setQueriesData({ queryKey: ['authorFeed'] }, removePostFromFeed);
+      queryClient.setQueriesData({ queryKey: ['actorLikes'] }, removePostFromFeed);
+
+      return { previousTimeline, previousCannectFeed, previousGlobalFeed, previousAuthorFeed, previousActorLikes };
+    },
+    onError: (err, uri, context) => {
+      // Rollback on error
+      if (context?.previousTimeline) {
+        queryClient.setQueryData(['timeline'], context.previousTimeline);
+      }
+      if (context?.previousCannectFeed) {
+        queryClient.setQueryData(['cannectFeed'], context.previousCannectFeed);
+      }
+      if (context?.previousGlobalFeed) {
+        queryClient.setQueryData(['globalFeed'], context.previousGlobalFeed);
+      }
+      if (context?.previousAuthorFeed) {
+        context.previousAuthorFeed.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousActorLikes) {
+        context.previousActorLikes.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSettled: () => {
+      // Refetch to sync with server
       queryClient.invalidateQueries({ queryKey: ['timeline'] });
+      queryClient.invalidateQueries({ queryKey: ['cannectFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['globalFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['authorFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['actorLikes'] });
     },
   });
 }
@@ -492,10 +555,12 @@ export function useUnlikePost() {
       await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
       await queryClient.cancelQueries({ queryKey: ['globalFeed'] });
       await queryClient.cancelQueries({ queryKey: ['authorFeed'] });
+      await queryClient.cancelQueries({ queryKey: ['actorLikes'] });
 
       const previousTimeline = queryClient.getQueryData(['timeline']);
       const previousCannectFeed = queryClient.getQueryData(['cannectFeed']);
       const previousglobalFeed = queryClient.getQueryData(['globalFeed']);
+      const previousActorLikes = queryClient.getQueriesData({ queryKey: ['actorLikes'] });
 
       const updatePostInFeed = (old: any) => {
         if (!old?.pages) return old;
@@ -520,10 +585,24 @@ export function useUnlikePost() {
         };
       };
 
+      // Remove post from actorLikes (Likes tab on profile)
+      const removeFromLikes = (old: any) => {
+        if (!old?.pages) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            feed: page.feed.filter((item: FeedViewPost) => item.post.uri !== postUri),
+          })),
+        };
+      };
+
       queryClient.setQueryData(['timeline'], updatePostInFeed);
       queryClient.setQueryData(['cannectFeed'], updatePostInFeed);
       queryClient.setQueryData(['globalFeed'], updatePostInFeed);
       queryClient.setQueriesData({ queryKey: ['authorFeed'] }, updatePostInFeed);
+      queryClient.setQueriesData({ queryKey: ['actorLikes'] }, removeFromLikes);
+      
       // Update thread queries for unlike
       queryClient.setQueriesData({ queryKey: ['thread'] }, (old: any) => {
         if (!old?.thread?.post) return old;
@@ -543,7 +622,7 @@ export function useUnlikePost() {
         return old;
       });
 
-      return { previousTimeline, previousCannectFeed, previousglobalFeed };
+      return { previousTimeline, previousCannectFeed, previousglobalFeed, previousActorLikes };
     },
     onError: (err, variables, context) => {
       if (context?.previousTimeline) {
@@ -554,6 +633,12 @@ export function useUnlikePost() {
       }
       if (context?.previousglobalFeed) {
         queryClient.setQueryData(['globalFeed'], context.previousglobalFeed);
+      }
+      // Restore actorLikes on error
+      if (context?.previousActorLikes) {
+        context.previousActorLikes.forEach(([queryKey, data]: [any, any]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
       }
     },
     onSettled: () => {
