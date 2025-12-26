@@ -30,6 +30,17 @@ export function useAuth() {
   
   const queryClient = useQueryClient();
 
+  // Subscribe to session expiry events
+  useEffect(() => {
+    const unsubscribe = atproto.onSessionExpired(() => {
+      console.log('[Auth] Session expired - clearing state');
+      clear();
+      queryClient.clear();
+    });
+    
+    return unsubscribe;
+  }, [clear, queryClient]);
+
   // Initialize agent and restore session on mount
   useEffect(() => {
     let mounted = true;

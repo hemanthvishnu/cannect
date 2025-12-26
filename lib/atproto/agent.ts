@@ -22,6 +22,30 @@ const BSKY_APPVIEW = 'https://public.api.bsky.app';
 // Singleton agent instance
 let agent: BskyAgent | null = null;
 
+// Session expiry listeners
+type SessionExpiredHandler = () => void;
+const sessionExpiredListeners = new Set<SessionExpiredHandler>();
+
+/**
+ * Subscribe to session expiry events
+ * Called when the refresh token expires and user must re-login
+ */
+export function onSessionExpired(handler: SessionExpiredHandler): () => void {
+  sessionExpiredListeners.add(handler);
+  return () => sessionExpiredListeners.delete(handler);
+}
+
+function notifySessionExpired() {
+  console.warn('[Auth] Session expired - user must re-login');
+  sessionExpiredListeners.forEach(handler => {
+    try {
+      handler();
+    } catch (err) {
+      console.error('[Auth] Session expired handler error:', err);
+    }
+  });
+}
+
 // Storage helpers
 async function getStoredSession(): Promise<any | null> {
   try {
@@ -61,7 +85,11 @@ export function getAgent(): BskyAgent {
     agent = new BskyAgent({
       service: PDS_SERVICE,
       persistSession: (evt, sess) => {
-        if (sess) {
+        if (evt === 'expired') {
+          // Refresh token expired - user must re-login
+          clearSession();
+          notifySessionExpired();
+        } else if (sess) {
           storeSession(sess);
         } else {
           clearSession();
