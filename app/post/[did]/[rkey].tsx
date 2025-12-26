@@ -45,14 +45,19 @@ function ReplyPost({
   onLike,
   onRepost,
   onReply,
+  onOptionsPress,
+  currentUserDid,
 }: { 
   post: PostView;
   onLike: () => void;
   onRepost: () => void;
   onReply: () => void;
+  onOptionsPress: () => void;
+  currentUserDid?: string | null;
 }) {
   const record = post.record as AppBskyFeedPost.Record;
   const router = useRouter();
+  const isOwnReply = currentUserDid === post.author.did;
   
   const handlePress = () => {
     const uriParts = post.uri.split('/');
@@ -81,11 +86,24 @@ function ReplyPost({
           )}
         </Pressable>
         <View className="flex-1 ml-3">
-          <View className="flex-row items-center">
-            <Text className="font-semibold text-text-primary">
-              {post.author.displayName || post.author.handle}
-            </Text>
-            <Text className="text-text-muted ml-1">@{post.author.handle}</Text>
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
+              <Text className="font-semibold text-text-primary">
+                {post.author.displayName || post.author.handle}
+              </Text>
+              <Text className="text-text-muted ml-1">@{post.author.handle}</Text>
+            </View>
+            {/* Three dots menu */}
+            <Pressable 
+              onPress={(e) => {
+                e.stopPropagation();
+                onOptionsPress();
+              }} 
+              className="p-1 -mr-1"
+              hitSlop={8}
+            >
+              <MoreHorizontal size={18} color="#6B7280" />
+            </Pressable>
           </View>
           <Text className="text-text-primary mt-1 leading-5">{record.text}</Text>
           
@@ -248,6 +266,7 @@ export default function PostDetailsScreen() {
   
   // Options menu state
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [selectedReply, setSelectedReply] = useState<PostView | null>(null);
 
   // Auto-scroll to main post when thread loads (if there are parents)
   const handleMainPostLayout = useCallback((event: LayoutChangeEvent) => {
@@ -405,6 +424,24 @@ export default function PostDetailsScreen() {
       repostMutation.mutate({ uri: replyPost.uri, cid: replyPost.cid });
     }
   }, [repostMutation, unrepostMutation]);
+
+  const handleReplyOptionsPress = useCallback((replyPost: PostView) => {
+    triggerHaptic();
+    setSelectedReply(replyPost);
+    setOptionsMenuVisible(true);
+  }, []);
+
+  const handleReplyDelete = useCallback(async () => {
+    if (!selectedReply) return;
+    
+    try {
+      await deleteMutation.mutateAsync(selectedReply.uri);
+      setOptionsMenuVisible(false);
+      setSelectedReply(null);
+    } catch (err) {
+      console.error('Failed to delete reply:', err);
+    }
+  }, [selectedReply, deleteMutation]);
 
   const handleReplyToReply = useCallback((replyPost: PostView) => {
     triggerHaptic();
@@ -817,7 +854,7 @@ export default function PostDetailsScreen() {
         {replies.length > 0 && (
           <View>
             <Text className="text-text-muted text-sm font-medium px-4 py-3 border-b border-border">
-              Replies
+              {replies.length} {replies.length === 1 ? 'Reply' : 'Replies'}
             </Text>
             {replies.map((reply) => (
               <ReplyPost 
@@ -826,6 +863,8 @@ export default function PostDetailsScreen() {
                 onLike={() => handleReplyLike(reply.post)}
                 onRepost={() => handleReplyRepost(reply.post)}
                 onReply={() => handleReplyToReply(reply.post)}
+                onOptionsPress={() => handleReplyOptionsPress(reply.post)}
+                currentUserDid={did}
               />
             ))}
           </View>
@@ -882,15 +921,25 @@ export default function PostDetailsScreen() {
         </View>
       </KeyboardAvoidingView>
       
-      {/* Post Options Menu */}
+      {/* Post Options Menu - handles both main post and replies */}
       <PostOptionsMenu
         isVisible={optionsMenuVisible}
-        onClose={() => setOptionsMenuVisible(false)}
-        onDelete={handleDelete}
-        isOwnPost={post.author.did === did}
-        postUrl={`https://bsky.app/profile/${post.author.handle}/post/${rkey}`}
-        postText={record.text}
-        authorHandle={post.author.handle}
+        onClose={() => {
+          setOptionsMenuVisible(false);
+          setSelectedReply(null);
+        }}
+        onDelete={selectedReply ? handleReplyDelete : handleDelete}
+        isOwnPost={selectedReply 
+          ? selectedReply.author.did === did 
+          : post.author.did === did}
+        postUrl={selectedReply 
+          ? `https://bsky.app/profile/${selectedReply.author.handle}/post/${selectedReply.uri.split('/').pop()}`
+          : `https://bsky.app/profile/${post.author.handle}/post/${rkey}`}
+        postText={selectedReply 
+          ? (selectedReply.record as AppBskyFeedPost.Record).text 
+          : record.text}
+        authorHandle={selectedReply ? selectedReply.author.handle : post.author.handle}
+        isReply={selectedReply ? true : hasParents}
       />
     </SafeAreaView>
   );
