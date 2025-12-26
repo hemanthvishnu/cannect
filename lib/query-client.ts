@@ -1,4 +1,14 @@
 import { QueryClient } from "@tanstack/react-query";
+import { isAuthError, handleAuthError } from "./atproto/agent";
+
+// Track if we're already handling an auth error to prevent multiple triggers
+let isHandlingAuthError = false;
+
+// Track consecutive 400 errors - multiple 400s in a row likely means auth failure
+let consecutive400Count = 0;
+let last400Time = 0;
+const CONSECUTIVE_400_THRESHOLD = 3;
+const CONSECUTIVE_400_WINDOW_MS = 2000; // Reset count if more than 2s between errors
 
 /**
  * Custom retry function with rate limit awareness
@@ -9,6 +19,42 @@ import { QueryClient } from "@tanstack/react-query";
  */
 function shouldRetry(failureCount: number, error: any): boolean {
   const status = error?.status || error?.response?.status;
+  const now = Date.now();
+  
+  // Track consecutive 400 errors
+  if (status === 400) {
+    if (now - last400Time < CONSECUTIVE_400_WINDOW_MS) {
+      consecutive400Count++;
+    } else {
+      consecutive400Count = 1;
+    }
+    last400Time = now;
+    
+    // Multiple 400s in quick succession = likely auth failure
+    if (consecutive400Count >= CONSECUTIVE_400_THRESHOLD && !isHandlingAuthError) {
+      console.warn(`[QueryClient] ${consecutive400Count} consecutive 400 errors - likely auth failure`);
+      isHandlingAuthError = true;
+      consecutive400Count = 0;
+      handleAuthError().finally(() => {
+        setTimeout(() => { isHandlingAuthError = false; }, 5000);
+      });
+      return false;
+    }
+  } else {
+    // Reset on non-400 status
+    consecutive400Count = 0;
+  }
+  
+  // Check if this is a specific auth error - trigger session expiry
+  if (isAuthError(error) && !isHandlingAuthError) {
+    isHandlingAuthError = true;
+    console.warn('[QueryClient] Auth error detected, triggering session expiry');
+    handleAuthError().finally(() => {
+      // Reset after a delay to allow re-detection if needed
+      setTimeout(() => { isHandlingAuthError = false; }, 5000);
+    });
+    return false;
+  }
   
   // Rate limited - retry more aggressively with backoff
   if (status === 429) {

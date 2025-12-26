@@ -133,6 +133,8 @@ export function useLogin() {
       return session;
     },
     onSuccess: (session) => {
+      // Reset expiry notification state on successful login
+      atproto.resetExpiryState();
       setSession(session);
       queryClient.invalidateQueries();
     },

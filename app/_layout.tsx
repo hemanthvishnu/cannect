@@ -61,17 +61,28 @@ function AppContent() {
 
     let lastHidden = 0;
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === "hidden") {
         lastHidden = Date.now();
       } else if (document.visibilityState === "visible") {
-        // If hidden for more than 5 minutes, refresh data
+        // If hidden for more than 5 minutes, refresh session first, then data
         const hiddenDuration = Date.now() - lastHidden;
         const fiveMinutes = 5 * 60 * 1000;
         
         if (lastHidden > 0 && hiddenDuration > fiveMinutes) {
-          console.log('[App] Woke from background after 5+ mins, refreshing data');
-          queryClient.invalidateQueries();
+          console.log('[App] Woke from background after 5+ mins, refreshing session...');
+          
+          try {
+            // Try to refresh the session before invalidating queries
+            // This ensures the access token is valid before making API calls
+            await atproto.refreshSession();
+            console.log('[App] Session refreshed, now refreshing data');
+            queryClient.invalidateQueries();
+          } catch (err) {
+            console.warn('[App] Session refresh failed:', err);
+            // Session refresh failed - queries will trigger auth error handling
+            queryClient.invalidateQueries();
+          }
         }
       }
     };

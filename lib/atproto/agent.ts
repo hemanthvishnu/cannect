@@ -26,6 +26,9 @@ let agent: BskyAgent | null = null;
 type SessionExpiredHandler = () => void;
 const sessionExpiredListeners = new Set<SessionExpiredHandler>();
 
+// Track if we've already notified about expiry to prevent spam
+let hasNotifiedExpiry = false;
+
 /**
  * Subscribe to session expiry events
  * Called when the refresh token expires and user must re-login
@@ -36,6 +39,10 @@ export function onSessionExpired(handler: SessionExpiredHandler): () => void {
 }
 
 function notifySessionExpired() {
+  // Prevent multiple notifications
+  if (hasNotifiedExpiry) return;
+  hasNotifiedExpiry = true;
+  
   console.warn('[Auth] Session expired - user must re-login');
   sessionExpiredListeners.forEach(handler => {
     try {
@@ -44,6 +51,62 @@ function notifySessionExpired() {
       console.error('[Auth] Session expired handler error:', err);
     }
   });
+}
+
+/**
+ * Check if an error indicates the session is invalid
+ * These errors mean the access token expired and refresh failed
+ */
+export function isAuthError(error: any): boolean {
+  if (!error) return false;
+  
+  const status = error?.status || error?.response?.status;
+  const errorCode = error?.error || error?.message || error?.data?.error;
+  const errorMessage = typeof error === 'string' ? error : 
+    error?.message || error?.data?.message || '';
+  
+  // 401 Unauthorized is always an auth error
+  if (status === 401) return true;
+  
+  // 400 with specific auth-related error codes or messages
+  if (status === 400) {
+    const authPatterns = [
+      'InvalidToken',
+      'ExpiredToken', 
+      'AuthenticationRequired',
+      'invalid_token',
+      'token_expired',
+      'AuthRequired',
+      'Bad token',
+      'invalid request',
+      'authentication required',
+      'not authenticated',
+      'session',
+    ];
+    
+    const textToCheck = `${errorCode || ''} ${errorMessage || ''}`.toLowerCase();
+    if (authPatterns.some(p => textToCheck.includes(p.toLowerCase()))) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Handle an auth error by clearing session and notifying listeners
+ */
+export async function handleAuthError(): Promise<void> {
+  await clearSession();
+  agent = null;
+  notifySessionExpired();
+}
+
+/**
+ * Reset expiry notification state (call after successful login)
+ */
+export function resetExpiryState(): void {
+  hasNotifiedExpiry = false;
 }
 
 // Storage helpers
@@ -180,6 +243,36 @@ export function isLoggedIn(): boolean {
 export function getSession() {
   const bskyAgent = getAgent();
   return bskyAgent.session;
+}
+
+/**
+ * Refresh the current session
+ * This will use the refresh token to get a new access token
+ * Should be called before making API calls after a period of inactivity
+ */
+export async function refreshSession(): Promise<void> {
+  const bskyAgent = getAgent();
+  
+  // If no session, nothing to refresh
+  if (!bskyAgent.session) {
+    console.log('[Agent] No session to refresh');
+    return;
+  }
+  
+  try {
+    // BskyAgent.resumeSession will automatically refresh if needed
+    await bskyAgent.resumeSession(bskyAgent.session);
+    console.log('[Agent] Session refreshed successfully');
+  } catch (err: any) {
+    console.error('[Agent] Failed to refresh session:', err);
+    
+    // Check if this is an auth error that means we need to re-login
+    if (isAuthError(err)) {
+      await handleAuthError();
+    }
+    
+    throw err;
+  }
 }
 
 /**
