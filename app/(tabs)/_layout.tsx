@@ -19,11 +19,6 @@ export default function TabsLayout() {
     }
   }, [pathname, isAuthenticated]);
 
-export default function TabsLayout() {
-  const { isLoading, isAuthenticated } = useAuthStore();
-  const { data: unreadCount } = useUnreadNotificationCount();
-  const { setBadge } = usePWA();
-
   // 💎 DIAMOND: Update app badge when unread count changes
   useEffect(() => {
     if (unreadCount !== undefined) {
