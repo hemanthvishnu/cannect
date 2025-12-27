@@ -639,6 +639,9 @@ export function useLikePost() {
       return result;
     },
     onMutate: async ({ uri }) => {
+      // Log optimistic update start
+      logger.mutation.optimisticStart('like', uri, { liked: true, likeCountDelta: 1 });
+      
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['timeline'] });
       await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
@@ -703,6 +706,9 @@ export function useLikePost() {
       return { previousTimeline, previousCannectFeed, previousglobalFeed };
     },
     onError: (err, variables, context) => {
+      // Log rollback
+      logger.mutation.rollback('like', variables.uri, err.message || 'Unknown error');
+      
       // Rollback on error
       if (context?.previousTimeline) {
         queryClient.setQueryData(['timeline'], context.previousTimeline);
@@ -714,6 +720,10 @@ export function useLikePost() {
         queryClient.setQueryData(['globalFeed'], context.previousglobalFeed);
       }
       // Note: authorFeed rollback handled by invalidation
+    },
+    onSuccess: (result, variables) => {
+      // Log successful server response
+      logger.mutation.serverResponse('like', variables.uri, { likeUri: result.uri }, true);
     },
     onSettled: () => {
       // Refetch to sync with server
@@ -739,6 +749,9 @@ export function useUnlikePost() {
       logger.post.unlike(postUri);
     },
     onMutate: async ({ postUri }) => {
+      // Log optimistic update start
+      logger.mutation.optimisticStart('unlike', postUri, { liked: false, likeCountDelta: -1 });
+      
       await queryClient.cancelQueries({ queryKey: ['timeline'] });
       await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
       await queryClient.cancelQueries({ queryKey: ['globalFeed'] });
@@ -813,6 +826,9 @@ export function useUnlikePost() {
       return { previousTimeline, previousCannectFeed, previousglobalFeed, previousActorLikes };
     },
     onError: (err, variables, context) => {
+      // Log rollback
+      logger.mutation.rollback('unlike', variables.postUri, err.message || 'Unknown error');
+      
       if (context?.previousTimeline) {
         queryClient.setQueryData(['timeline'], context.previousTimeline);
       }
@@ -828,6 +844,10 @@ export function useUnlikePost() {
           queryClient.setQueryData(queryKey, data);
         });
       }
+    },
+    onSuccess: (_, variables) => {
+      // Log successful server response
+      logger.mutation.serverResponse('unlike', variables.postUri, { removed: true }, true);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timeline'] });
@@ -853,6 +873,9 @@ export function useRepost() {
       return result;
     },
     onMutate: async ({ uri }) => {
+      // Log optimistic update start
+      logger.mutation.optimisticStart('repost', uri, { reposted: true, repostCountDelta: 1 });
+      
       await queryClient.cancelQueries({ queryKey: ['timeline'] });
       await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
       await queryClient.cancelQueries({ queryKey: ['globalFeed'] });
@@ -911,6 +934,9 @@ export function useRepost() {
       return { previousTimeline, previousCannectFeed, previousglobalFeed };
     },
     onError: (err, variables, context) => {
+      // Log rollback
+      logger.mutation.rollback('repost', variables.uri, err.message || 'Unknown error');
+      
       if (context?.previousTimeline) {
         queryClient.setQueryData(['timeline'], context.previousTimeline);
       }
@@ -920,6 +946,10 @@ export function useRepost() {
       if (context?.previousglobalFeed) {
         queryClient.setQueryData(['globalFeed'], context.previousglobalFeed);
       }
+    },
+    onSuccess: (result, variables) => {
+      // Log successful server response
+      logger.mutation.serverResponse('repost', variables.uri, { repostUri: result.uri }, true);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timeline'] });
@@ -943,6 +973,9 @@ export function useDeleteRepost() {
       logger.post.unrepost(postUri);
     },
     onMutate: async ({ postUri }) => {
+      // Log optimistic update start
+      logger.mutation.optimisticStart('unrepost', postUri, { reposted: false, repostCountDelta: -1 });
+      
       await queryClient.cancelQueries({ queryKey: ['timeline'] });
       await queryClient.cancelQueries({ queryKey: ['cannectFeed'] });
       await queryClient.cancelQueries({ queryKey: ['globalFeed'] });
@@ -1002,6 +1035,9 @@ export function useDeleteRepost() {
       return { previousTimeline, previousCannectFeed, previousglobalFeed };
     },
     onError: (err, variables, context) => {
+      // Log rollback
+      logger.mutation.rollback('unrepost', variables.postUri, err.message || 'Unknown error');
+      
       if (context?.previousTimeline) {
         queryClient.setQueryData(['timeline'], context.previousTimeline);
       }
@@ -1011,6 +1047,10 @@ export function useDeleteRepost() {
       if (context?.previousglobalFeed) {
         queryClient.setQueryData(['globalFeed'], context.previousglobalFeed);
       }
+    },
+    onSuccess: (_, variables) => {
+      // Log successful server response
+      logger.mutation.serverResponse('unrepost', variables.postUri, { removed: true }, true);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timeline'] });

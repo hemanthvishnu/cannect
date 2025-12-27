@@ -3,11 +3,28 @@ import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowLeft, Heart, MessageCircle, Repeat2 } from "lucide-react-native";
 import { Image } from "expo-image";
+import { useEffect, useRef } from "react";
 import { usePostThread, useLikePost, useUnlikePost, useRepost, useDeleteRepost } from "@/lib/hooks";
+import { logger } from "@/lib/utils";
 
 export default function PostDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const renderStart = useRef(performance.now());
+  
+  // Track render timing
+  useEffect(() => {
+    const duration = performance.now() - renderStart.current;
+    logger.render.screen('PostDetails', duration);
+  }, []);
+  
+  // Log when thread data loads
+  useEffect(() => {
+    if (thread?.post) {
+      const loadDuration = performance.now() - renderStart.current;
+      logger.render.screen('PostDetails:dataLoaded', loadDuration);
+    }
+  }, [thread?.post]);
   
   // The id param is actually the AT URI for this post
   const { data: thread, isLoading, error } = usePostThread(id ?? "");

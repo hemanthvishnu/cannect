@@ -33,6 +33,9 @@ const ENABLED_CATEGORIES: Record<string, boolean> = {
   profile: true,   // Profile updates, follows
   system: true,    // App lifecycle
   perf: true,      // Performance metrics
+  cache: true,     // Query cache operations
+  render: true,    // Component render timing
+  mutation: true,  // Optimistic update lifecycle
 };
 
 // Supabase Logging Project (separate from main app)
@@ -48,6 +51,12 @@ export type LogCategory =
   | 'nav'       // Navigation, screen views
   | 'error'     // Errors, exceptions
   | 'network'   // API calls
+  | 'profile'   // Profile updates, follows
+  | 'system'    // App lifecycle
+  | 'perf'      // Performance metrics
+  | 'cache'     // Query cache operations
+  | 'render'    // Component render timing
+  | 'mutation'; // Optimistic update lifecycle
   | 'profile'   // Profile updates, follows
   | 'system'    // App lifecycle
   | 'perf';     // Performance metrics
@@ -432,6 +441,141 @@ export const logger = {
         status: 'error', 
         error: reason?.message || String(reason),
         metadata: { stack: reason?.stack }
+      }),
+  },
+  
+  // =====================================================
+  // MUTATION LIFECYCLE - Track optimistic updates
+  // =====================================================
+  mutation: {
+    /**
+     * Log when optimistic update is applied
+     */
+    optimisticStart: (name: string, postUri: string, optimisticState: Record<string, any>) => 
+      log({ 
+        category: 'mutation', 
+        action: name, 
+        status: 'start', 
+        message: 'Optimistic update applied',
+        metadata: { postUri, optimisticState } 
+      }),
+    
+    /**
+     * Log when server confirms (or differs from) optimistic state
+     */
+    serverResponse: (name: string, postUri: string, serverState: Record<string, any>, matched: boolean) => 
+      log({ 
+        category: 'mutation', 
+        action: name, 
+        status: matched ? 'success' : 'info', 
+        message: matched ? 'Server confirmed optimistic' : 'Server differs from optimistic',
+        metadata: { postUri, serverState, matched } 
+      }),
+    
+    /**
+     * Log rollback when mutation fails
+     */
+    rollback: (name: string, postUri: string, error: string) => 
+      log({ 
+        category: 'mutation', 
+        action: name, 
+        status: 'error', 
+        error,
+        message: 'Rolled back optimistic update',
+        metadata: { postUri } 
+      }),
+  },
+  
+  // =====================================================
+  // CACHE OPERATIONS - Track query cache behavior
+  // =====================================================
+  cache: {
+    /**
+     * Log cache hit/miss
+     */
+    access: (queryKey: string, hit: boolean, staleTime?: number) => 
+      log({ 
+        category: 'cache', 
+        action: 'access', 
+        status: hit ? 'success' : 'info', 
+        message: hit ? 'Cache hit' : 'Cache miss',
+        metadata: { queryKey, hit, staleTime } 
+      }),
+    
+    /**
+     * Log cache invalidation
+     */
+    invalidate: (queryKey: string, reason: string) => 
+      log({ 
+        category: 'cache', 
+        action: 'invalidate', 
+        status: 'info', 
+        message: reason,
+        metadata: { queryKey } 
+      }),
+    
+    /**
+     * Log cache update from mutation
+     */
+    update: (queryKey: string, itemCount: number) => 
+      log({ 
+        category: 'cache', 
+        action: 'update', 
+        status: 'success', 
+        metadata: { queryKey, itemCount } 
+      }),
+  },
+  
+  // =====================================================
+  // RENDER TIMING - Track component render performance
+  // =====================================================
+  render: {
+    /**
+     * Log screen render time (from mount to content visible)
+     */
+    screen: (screenName: string, durationMs: number, itemCount?: number) => 
+      log({ 
+        category: 'render', 
+        action: 'screen', 
+        status: 'success', 
+        message: screenName,
+        metadata: { durationMs, itemCount } 
+      }),
+    
+    /**
+     * Log list render batch (for virtualized lists)
+     */
+    listBatch: (listName: string, batchSize: number, totalRendered: number, durationMs: number) => 
+      log({ 
+        category: 'render', 
+        action: 'list_batch', 
+        status: 'info', 
+        message: listName,
+        metadata: { batchSize, totalRendered, durationMs } 
+      }),
+    
+    /**
+     * Log layout shift (jarring effect)
+     */
+    layoutShift: (screenName: string, shiftValue: number, cause?: string) => 
+      log({ 
+        category: 'render', 
+        action: 'layout_shift', 
+        status: shiftValue > 0.1 ? 'error' : 'info', 
+        message: cause || 'Layout shift detected',
+        metadata: { screenName, shiftValue } 
+      }),
+    
+    /**
+     * Log slow render (> 100ms)
+     */
+    slow: (componentName: string, durationMs: number, reason?: string) => 
+      log({ 
+        category: 'render', 
+        action: 'slow', 
+        status: 'error', 
+        message: reason || `Slow render: ${durationMs}ms`,
+        metadata: { componentName, durationMs } 
       }),
   },
   

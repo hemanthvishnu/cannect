@@ -3,7 +3,7 @@
  * Tabs: Posts, Reposts, Replies, Likes
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { View, Text, Image, Pressable, RefreshControl, ActivityIndicator, Platform, Share as RNShare } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
@@ -14,6 +14,7 @@ import { useMyProfile, useAuthorFeed, useActorLikes, useLogout, useLikePost, use
 import { useAuthStore } from "@/lib/stores";
 import { RepostMenu } from "@/components/social/RepostMenu";
 import { PostOptionsMenu } from "@/components/social/PostOptionsMenu";
+import { logger } from "@/lib/utils";
 import type { AppBskyFeedDefs, AppBskyFeedPost } from '@atproto/api';
 
 type FeedViewPost = AppBskyFeedDefs.FeedViewPost;
@@ -223,6 +224,13 @@ export default function ProfileScreen() {
   const [repostMenuVisible, setRepostMenuVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
+  const renderStart = useRef(performance.now());
+  
+  // Track render timing
+  useEffect(() => {
+    const duration = performance.now() - renderStart.current;
+    logger.render.screen('ProfileScreen', duration);
+  }, []);
   
   const profileQuery = useMyProfile();
   
@@ -240,23 +248,30 @@ export default function ProfileScreen() {
 
   // Get posts data based on active tab
   const posts = useMemo(() => {
+    let result: FeedViewPost[] = [];
     if (activeTab === "posts") {
-      return postsQuery.data?.pages?.flatMap(page => page.feed) || [];
+      result = postsQuery.data?.pages?.flatMap(page => page.feed) || [];
     } else if (activeTab === "reposts") {
       // Filter for reposts only
       const allPosts = postsQuery.data?.pages?.flatMap(page => page.feed) || [];
-      return allPosts.filter(item => item.reason?.$type === 'app.bsky.feed.defs#reasonRepost');
+      result = allPosts.filter(item => item.reason?.$type === 'app.bsky.feed.defs#reasonRepost');
     } else if (activeTab === "replies") {
       // Get posts with replies then filter for actual replies
       const allPosts = repliesQuery.data?.pages?.flatMap(page => page.feed) || [];
-      return allPosts.filter(item => {
+      result = allPosts.filter(item => {
         const record = item.post.record as any;
         return record?.reply; // Has reply reference = it's a reply
       });
     } else if (activeTab === "likes") {
-      return likesQuery.data?.pages?.flatMap(page => page.feed) || [];
+      result = likesQuery.data?.pages?.flatMap(page => page.feed) || [];
     }
-    return [];
+    
+    // Log profile posts ready (track large profile renders)
+    if (result.length > 0) {
+      logger.render.screen(`Profile:${activeTab}`, 0, result.length);
+    }
+    
+    return result;
   }, [activeTab, postsQuery.data, repliesQuery.data, likesQuery.data]);
 
   const currentQuery = activeTab === "likes" ? likesQuery : 

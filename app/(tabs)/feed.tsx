@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Leaf, Heart, MessageCircle, Repeat2, Share, ExternalLink, ImageOff, MoreHorizontal } from "lucide-react-native";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import * as Haptics from "expo-haptics";
 import { useCannectFeed, useGlobalFeed, useTimeline, useLikePost, useUnlikePost, useRepost, useDeleteRepost, useDeletePost } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/stores";
@@ -21,6 +21,7 @@ import { RepostMenu } from "@/components/social/RepostMenu";
 import { PostOptionsMenu } from "@/components/social/PostOptionsMenu";
 import { MediaViewer } from "@/components/ui/MediaViewer";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
+import { logger } from "@/lib/utils";
 import type { AppBskyFeedDefs, AppBskyFeedPost } from '@atproto/api';
 
 type FeedType = 'global' | 'local' | 'following';
@@ -426,6 +427,13 @@ export default function FeedScreen() {
   const { did } = useAuthStore();
   const { height } = useWindowDimensions();
   const [activeFeed, setActiveFeed] = useState<FeedType>('global');
+  const renderStart = useRef(performance.now());
+  
+  // Track render timing
+  useEffect(() => {
+    const duration = performance.now() - renderStart.current;
+    logger.render.screen('FeedScreen', duration);
+  }, []);
   
   // Repost menu state
   const [repostMenuVisible, setRepostMenuVisible] = useState(false);
@@ -463,12 +471,19 @@ export default function FeedScreen() {
   const posts = useMemo(() => {
     const allPosts = activeQuery.data?.pages?.flatMap(page => page.feed) || [];
     // Sort by createdAt (when user posted) - not indexedAt (when network indexed)
-    return allPosts.sort((a, b) => {
+    const sorted = allPosts.sort((a, b) => {
       const aDate = (a.post.record as any)?.createdAt || a.post.indexedAt;
       const bDate = (b.post.record as any)?.createdAt || b.post.indexedAt;
       return new Date(bDate).getTime() - new Date(aDate).getTime();
     });
-  }, [activeQuery.data]);
+    
+    // Log feed data ready
+    if (sorted.length > 0) {
+      logger.render.screen(`Feed:${activeFeed}`, 0, sorted.length);
+    }
+    
+    return sorted;
+  }, [activeQuery.data, activeFeed]);
 
   const handleTabChange = useCallback((feed: FeedType) => {
     if (Platform.OS !== 'web') {
