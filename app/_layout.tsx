@@ -17,6 +17,7 @@ import { IOSInstallPrompt } from "@/components/IOSInstallPrompt";
 import { WhatsNewToast } from "@/components/WhatsNewToast";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ToastProvider } from "@/components/ui/Toast";
+import { logger, setupGlobalErrorHandlers } from "@/lib/utils/logger";
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -36,6 +37,10 @@ function AppContent() {
   // 💎 Set mounted after first render to gate hydration
   useEffect(() => {
     setIsMounted(true);
+    // Setup global error handlers for logging
+    if (Platform.OS === 'web') {
+      setupGlobalErrorHandlers();
+    }
   }, []);
 
   // 💎 bfcache handling - Invalidate stale queries when page restored from back/forward cache
@@ -169,11 +174,13 @@ export default function RootLayout() {
         const agent = await atproto.initializeAgent();
         if (agent.session) {
           setSession(agent.session);
+          logger.auth.sessionRestore(agent.session.did);
         } else {
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("[RootLayout] Failed to initialize auth:", err);
+        logger.auth.sessionRestoreError(err?.message || 'Unknown error');
         setLoading(false);
       } finally {
         SplashScreen.hideAsync();

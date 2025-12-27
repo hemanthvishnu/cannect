@@ -7,6 +7,7 @@ import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react-native";
 import { useLogin } from "@/lib/hooks";
+import { logger } from "@/lib/utils/logger";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -18,10 +19,16 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     setError(null);
     if (!email || !password) { setError("Please fill in all fields"); return; }
+    
+    logger.auth.loginStart(email);
     try {
-      await login.mutateAsync({ identifier: email, password });
+      const result = await login.mutateAsync({ identifier: email, password });
+      logger.auth.loginSuccess(result.did, result.handle);
       router.replace("/(tabs)/feed");
-    } catch (err: any) { setError(err.message || "Failed to sign in"); }
+    } catch (err: any) { 
+      logger.auth.loginError(email, err.message || 'Unknown error');
+      setError(err.message || "Failed to sign in"); 
+    }
   };
 
   return (

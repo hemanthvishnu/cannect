@@ -7,6 +7,7 @@ import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowLeft, Mail, Lock, Eye, EyeOff, Globe } from "lucide-react-native";
 import { useCreateAccount } from "@/lib/hooks";
+import { logger } from "@/lib/utils/logger";
 
 // Built-in invite code for app users
 const APP_INVITE_CODE = process.env.EXPO_PUBLIC_PDS_INVITE_CODE || '';
@@ -42,19 +43,25 @@ export default function RegisterScreen() {
       return;
     }
     
+    logger.auth.registerStart(`${normalizedUsername}.cannect.space`);
+    
     try {
-      await createAccount.mutateAsync({ 
+      const result = await createAccount.mutateAsync({ 
         email, 
         password, 
         handle: normalizedUsername,
         inviteCode: inviteCode || undefined,
       });
       
+      logger.auth.registerSuccess(result.did, result.handle);
+      
       // Success - redirect to feed
       router.replace("/(tabs)/feed");
     } catch (err: any) { 
       // Parse AT Protocol errors
       const message = err.message || "Failed to create account";
+      logger.auth.registerError(`${normalizedUsername}.cannect.space`, message);
+      
       if (message.includes("Handle already taken")) {
         setError("This username is already taken. Please choose another.");
       } else if (message.includes("Invalid invite code")) {

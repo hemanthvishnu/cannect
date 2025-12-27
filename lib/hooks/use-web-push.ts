@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/lib/stores';
+import { logger } from '@/lib/utils/logger';
 
 // Push VPS API endpoint for push subscriptions
 const PUSH_API_URL = process.env.EXPO_PUBLIC_PUSH_API_URL || 'https://push.cannect.space';
@@ -147,6 +148,9 @@ export function useWebPush() {
         
         console.log('[WebPush] Checking state:', { supported, iosPWA, permission });
         
+        // Log push support check
+        logger.push.checkSupport({ supported, iosPWA, permission });
+        
         let isSubscribed = false;
         
         // Only check subscription if we have permission and an active SW
@@ -157,8 +161,9 @@ export function useWebPush() {
               const subscription = await registration.pushManager.getSubscription();
               isSubscribed = !!subscription;
               console.log('[WebPush] Existing subscription:', isSubscribed);
-            } catch (e) {
+            } catch (e: any) {
               console.error('[WebPush] Error checking subscription:', e);
+              logger.error('push', 'check_subscription', e);
             }
           }
         }
@@ -172,8 +177,9 @@ export function useWebPush() {
           isInitialized: true,
           error: null,
         });
-      } catch (e) {
+      } catch (e: any) {
         console.error('[WebPush] Init error:', e);
+        logger.error('push', 'init', e);
         setState(s => ({ ...s, isLoading: false, isInitialized: true }));
       }
     };
@@ -194,17 +200,20 @@ export function useWebPush() {
 
     if (!VAPID_PUBLIC_KEY) {
       console.error('[WebPush] VAPID_PUBLIC_KEY not configured');
+      logger.error('push', 'subscribe', 'VAPID_PUBLIC_KEY not configured');
       setState(s => ({ ...s, error: 'Push notifications not configured' }));
       return false;
     }
 
     setState(s => ({ ...s, isLoading: true, error: null }));
+    logger.push.subscribeStart();
 
     try {
       // Request permission first
       console.log('[WebPush] Requesting permission...');
       const permission = await Notification.requestPermission();
       console.log('[WebPush] Permission result:', permission);
+      logger.push.permissionRequest(permission);
       
       if (permission !== 'granted') {
         setState(s => ({ 
@@ -223,17 +232,20 @@ export function useWebPush() {
       // If no active registration, try to wait for ready with timeout
       if (!registration) {
         console.log('[WebPush] No active SW, waiting for ready...');
+        logger.info('push', 'sw_wait', 'No active SW, waiting for ready');
         try {
           registration = await Promise.race([
             navigator.serviceWorker.ready,
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
           ]) as ServiceWorkerRegistration | null;
-        } catch (e) {
+        } catch (e: any) {
           console.error('[WebPush] SW ready timeout:', e);
+          logger.error('push', 'sw_timeout', e);
         }
       }
       
       if (!registration) {
+        logger.error('push', 'subscribe', 'Service worker not ready');
         setState(s => ({ 
           ...s, 
           isLoading: false,
@@ -277,11 +289,14 @@ export function useWebPush() {
             
             if (response.ok) {
               console.log('[WebPush] Subscription registered with server');
+              logger.push.subscribeSuccess();
             } else {
               console.error('[WebPush] Failed to register with server:', response.status);
+              logger.error('push', 'server_register', `Server returned ${response.status}`);
             }
-          } catch (err) {
+          } catch (err: any) {
             console.error('[WebPush] Server registration error:', err);
+            logger.error('push', 'server_register', err);
             // Continue - local subscription still works for testing
           }
         }
@@ -300,6 +315,7 @@ export function useWebPush() {
 
     } catch (error: any) {
       console.error('[WebPush] Subscription error:', error);
+      logger.push.subscribeError(error.message || 'Unknown error');
       setState(s => ({ 
         ...s, 
         isLoading: false,
@@ -307,7 +323,7 @@ export function useWebPush() {
       }));
       return false;
     }
-  }, [state.isSupported]);
+  }, [state.isSupported, did]);
 
   /**
    * Unsubscribe from push notifications
